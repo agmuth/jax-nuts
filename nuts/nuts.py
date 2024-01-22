@@ -1,15 +1,29 @@
+from typing import Any
 import jax.numpy as jnp
 import jax
 import numpy as np
 
 
-class NoUTurnSampler:
+class PRNGKeySequence:
+    def __init__(self, seed: int) -> None:
+        self.key = jax.random.PRNGKey(seed=seed)
+        
+    def __next__(self):
+        _, self.key = jax.random.split(self.key)
+        return self.key
+            
+    def __iter__(self):
+        return self
     
-    # def __init__(self, loglik: callable):
-    #     self.loglik = loglik
-    #     self.loglik_grad = jax.grad(loglik)
-    #     self.loglik_hess = jax.jacfwd(jax.jacrev(loglik))
-    #     self.delta_max = 1_000
+    def __call__(self):
+        return self.__next__()
+    
+
+
+
+
+class NoUTurnSampler:
+
     
     def __call__(self, theta_0, eps, loglik, M, *args, **kwargs):
         seed = 123
@@ -17,7 +31,7 @@ class NoUTurnSampler:
         self.loglik_grad = jax.grad(loglik)
         self.loglik_hess = jax.jacfwd(jax.jacrev(loglik))
         self.delta_max = 1_000
-        self.key = jax.random.PRNGKey(seed=seed)
+        self.key = PRNGKeySequence(seed)
         
         dim_theta = theta_0.shape[0]
         theta_sample = [None]*(M+1)
@@ -25,18 +39,14 @@ class NoUTurnSampler:
         theta_sample[0] = theta_0
         
         for m in range(1, M+1):
-            # r_0 = jax.random.multivariate_normal(
-            #     key=self.key,
-            #     mean=jnp.zeros(dim_theta),
-            #     cov=jnp.eye(dim_theta)
-            # )
-            # u = jax.random.uniform(key=self.key, minval=0, maxval=jnp.exp(self.loglik(theta_sample[m-1]) -0.5*jnp.dot(r_0, r_0)))
-            
-            r_0 = np.random.multivariate_normal(
+            r_0 = jax.random.multivariate_normal(
+                key=self.key(),
                 mean=jnp.zeros(dim_theta),
                 cov=jnp.eye(dim_theta)
             )
-            u = np.random.uniform(low=0, high=jnp.exp(self.loglik(theta_sample[m-1]) -0.5*jnp.dot(r_0, r_0)))
+            u = jax.random.uniform(key=self.key(), minval=0, maxval=jnp.exp(self.loglik(theta_sample[m-1]) -0.5*jnp.dot(r_0, r_0)))
+            
+           
             
             theta_minus, theta_plus = theta_sample[m-1], theta_sample[m-1]
             r_minus, r_plus = r_0, r_0
@@ -45,8 +55,8 @@ class NoUTurnSampler:
             j = 1
             
             while s == 1:
-                # v_j = jax.random.choice(self.key, jnp.array([-1, 1]))
-                v_j = np.random.choice(np.array([-1, 1]))
+                v_j = jax.random.choice(self.key(), jnp.array([-1, 1]))
+                
                 if v_j == -1:
                     theta_minus, r_minus, _, _, C_prime, s_prime = self._build_tree(theta_minus, r_minus, u, v_j, j-1, eps)
                 else:
@@ -58,8 +68,8 @@ class NoUTurnSampler:
                 s *= s_prime * (jnp.dot(theta_delta, r_minus) >= 0) * (jnp.dot(theta_delta, r_plus) >= 0)
                 j += 1
                 
-            # sample = jax.random.randint(self.key, minval=0, maxval=len(C))
-            sample = np.random.randint(low=0, high=len(C))
+            sample = jax.random.randint(self.key(), shape=(1,), minval=0, maxval=len(C))[0]
+            
             sample = C[sample]
             theta_sample[m] = sample[0]
             r_sample[m] = sample[1]
