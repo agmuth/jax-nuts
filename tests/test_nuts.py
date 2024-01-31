@@ -3,6 +3,6 @@ def test_assert_true():
 
 
 def test_jax_nuts_import():
-    import nuts  # fmt: off
+    import jaxnuts  # fmt: off
 
     assert True
