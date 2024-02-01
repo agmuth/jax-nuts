@@ -35,7 +35,7 @@ problems = [
 def test_normal_process_mean_known(problem: ProblemInstance):
     cp = NormalProcessMeanKnown(**problem.dict())
     nuts = NoUTurnSampler(loglik=cp)
-    theta_0 = jnp.array([1.0])
+    theta_0 = jnp.array([266.5])
     M = 200
     theta_samples = nuts(theta_0, M)
     theta_samples = theta_samples[M // 2 :]
@@ -43,5 +43,5 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1)
 
 
-# if __name__ == "__main__":
-#     test_normal_process_mean_known(problems[0])
+if __name__ == "__main__":
+    test_normal_process_mean_known(problems[0])

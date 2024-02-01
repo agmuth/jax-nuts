@@ -22,7 +22,7 @@ class NormalProcessPrecisonKnown:
         # posterior loglik for mu
         mu = theta[0]
         loglik = 0.0
-        loglik += 0.5 * jnp.log(self.p_prime)
+        # loglik += 0.5 * jnp.log(self.p_prime)
         loglik += (
             -0.5 * self.p_prime * jnp.dot((mu - self.m_prime), (mu - self.m_prime))
         )
@@ -47,12 +47,17 @@ class NormalProcessMeanKnown:
 
     def __call__(self, theta):
         # posterior loglik for rho
+
         rho = theta[0]
+
+        if rho <= 0:
+            return -jnp.inf
+
         loglik = 0.0
-        loglik += rho ** (self.a_prime - 1)
-        loglik *= jnp.exp(-rho / self.b_prime)
-        loglik /= jax.scipy.special.gamma(self.a_prime)
-        loglik /= self.b_prime**self.a_prime
+        loglik += (self.a_prime - 1) * jnp.log(rho)
+        loglik += -rho / self.b_prime
+        # loglik -= jax.scipy.special.gamma(self.a_prime)
+        # loglik -= self.a_prime*jnp.log(self.b_prime)
         return loglik
 
     @property

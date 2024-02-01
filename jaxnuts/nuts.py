@@ -247,15 +247,16 @@ class NoUTurnSampler:
             mean=jnp.zeros(dim_theta),
             cov=jnp.eye(dim_theta),
         )
-        loglik0 = self.theta_r_loglik(theta, r)
 
         theta_prime, r_prime = self._leapfrog(theta, r, eps)
-        delta_loglik = self.theta_r_loglik(theta_prime, r_prime) - loglik0
-        alpha = 2 * int(delta_loglik > -1 * ln2) - 1
-        while alpha * delta_loglik > -1 * alpha * ln2:
+        ln_p = self.theta_r_loglik(theta, r)
+        ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
+
+        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
+        while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
             eps *= 2.0**alpha
             theta_prime, r_prime = self._leapfrog(theta, r, eps)
-            delta_loglik = self.theta_r_loglik(theta_prime, r_prime) - loglik0
+            ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
         return eps
 
