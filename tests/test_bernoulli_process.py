@@ -28,13 +28,11 @@ def test_bernoulli_process(problem: ProblemInstance):
     nuts = NoUTurnSampler(loglik=cp)
     theta_0 = jnp.array([0.5])
     theta_0 = cp.logit(theta_0)
-    M = 200
-    theta_samples = nuts(theta_0, M)
-    theta_samples = theta_samples[M // 2 :]
+    M, M_adapt = 400, 200
+    theta_samples = nuts(theta_0, M, M_adapt)
+    theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_logit(theta_samples)
     nuts_posterior_mean = theta_samples.mean()
-    assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1)
-
-
-if __name__ == "__main__":
-    test_bernoulli_process(problems[0])
+    assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1) and (
+        theta_samples.std() > 0
+    )

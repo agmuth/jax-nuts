@@ -31,13 +31,15 @@ class NoUTurnSampler:
         self.png_key_seq = PRNGKeySequence(self.seed)
         self.delta_max = 1_000
 
-    def __call__(self, theta_0, M):
+    def __call__(
+        self, theta_0, M, M_adapt=None, delta=None, gamma=None, kappa=None, t_0=None
+    ):
         # TODO: accept as args
-        M_adapt = M // 2
-        delta = 0.5 * (0.95 + 0.25)
-        gamma = 0.05
-        kappa = 0.75
-        t_0 = 10
+        M_adapt = M_adapt if M_adapt else M // 2
+        delta = delta if delta else 0.5 * (0.95 + 0.25)
+        gamma = gamma if gamma else 0.05
+        kappa = kappa if kappa else 0.75
+        t_0 = t_0 if t_0 else 10
 
         eps = self._find_reasonable_epsilon(theta=theta_0)
         # eps = 1.
@@ -259,51 +261,3 @@ class NoUTurnSampler:
             ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
         return eps
-
-
-if __name__ == "__main__":
-    print("NUTS")
-
-    class NormalLogLikSigmaKnown:
-        def __init__(self, x, sigma):
-            self.x = x
-            self.sigma = sigma
-
-        # @jax.jit
-        def __call__(self, theta):
-            mu = theta[0]
-            std_errs = (x - mu) / self.sigma
-            loglik = -0.5 * jnp.dot(std_errs, std_errs) - 0.5 * jnp.log(sigma)
-            return loglik
-
-    class NormalLogLikMuKnown:
-        def __init__(self, x, mu):
-            self.x = x
-            self.mu = mu
-
-        # @jax.jit
-        def __call__(self, theta):
-            sigma = theta[0]
-            std_errs = (x - self.mu) / sigma
-            loglik = -0.5 * jnp.dot(std_errs, std_errs) - 0.5 * jnp.log(sigma)
-            return loglik
-
-    key = jax.random.PRNGKey(0)
-    mu = 0
-    sigma = 1
-    x = jax.random.normal(key, (100,)) * sigma + mu
-
-    # loglik = NormalLogLikSigmaKnown(x, sigma)
-    loglik = NormalLogLikMuKnown(x, sigma)
-    # loglik_jit = jax.jit(loglik)
-    # loglik_aot = jax.jit( loglik).lower(jnp.empty((2,))).compile()
-
-    nuts = NoUTurnSampler(loglik=loglik)
-
-    theta_0 = jnp.array([2.0])
-    eps = 0.1
-    M = 200
-    theta_samples = nuts(theta_0, M)
-    theta_samples = theta_samples[M // 2 :]
-    print(theta_samples.min(), theta_samples.max())
-    print(theta_samples.mean(), theta_samples.std())
