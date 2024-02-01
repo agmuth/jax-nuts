@@ -1,8 +1,6 @@
-from typing import Any
 
 import jax
 import jax.numpy as jnp
-import numpy as np
 
 
 class PRNGKeySequence:
@@ -208,7 +206,9 @@ class NoUTurnSampler:
                         theta_plus, r_plus, u, v, j - 1, eps, theta_0, r_0
                     )
 
-                if jax.random.uniform(self.png_key_seq()) <= (n_double_prime / (n_prime + n_double_prime) if n_double_prime else 0):
+                if jax.random.uniform(self.png_key_seq()) <= (
+                    n_double_prime / (n_prime + n_double_prime) if n_double_prime else 0
+                ):
                     theta_prime = theta_double_prime
 
                 theta_delta = theta_plus - theta_minus
@@ -221,9 +221,18 @@ class NoUTurnSampler:
                 alpha_prime += alpha_double_prime
                 n_alpha_prime += n_alpha_double_prime
 
-        return theta_minus, r_minus, theta_plus, r_plus, theta_prime, n_prime, s_prime, alpha_prime, n_alpha_prime
+        return (
+            theta_minus,
+            r_minus,
+            theta_plus,
+            r_plus,
+            theta_prime,
+            n_prime,
+            s_prime,
+            alpha_prime,
+            n_alpha_prime,
+        )
 
-    
     def _leapfrog(self, theta, r, eps):
         r_tilde = r + 0.5 * eps * self.theta_loglik_grad(theta)
         theta_tilde = theta + eps * r_tilde
@@ -264,9 +273,9 @@ if __name__ == "__main__":
         def __call__(self, theta):
             mu = theta[0]
             std_errs = (x - mu) / self.sigma
-            loglik = -0.5 * jnp.dot(std_errs, std_errs) - 0.5*jnp.log(sigma)
-            return loglik 
-        
+            loglik = -0.5 * jnp.dot(std_errs, std_errs) - 0.5 * jnp.log(sigma)
+            return loglik
+
     class NormalLogLikMuKnown:
         def __init__(self, x, mu):
             self.x = x
@@ -276,8 +285,8 @@ if __name__ == "__main__":
         def __call__(self, theta):
             sigma = theta[0]
             std_errs = (x - self.mu) / sigma
-            loglik = -0.5 * jnp.dot(std_errs, std_errs) - 0.5*jnp.log(sigma)
-            return loglik 
+            loglik = -0.5 * jnp.dot(std_errs, std_errs) - 0.5 * jnp.log(sigma)
+            return loglik
 
     key = jax.random.PRNGKey(0)
     mu = 0
@@ -288,14 +297,13 @@ if __name__ == "__main__":
     loglik = NormalLogLikMuKnown(x, sigma)
     # loglik_jit = jax.jit(loglik)
     # loglik_aot = jax.jit( loglik).lower(jnp.empty((2,))).compile()
-    
-    
+
     nuts = NoUTurnSampler(loglik=loglik)
 
     theta_0 = jnp.array([2.0])
     eps = 0.1
     M = 200
     theta_samples = nuts(theta_0, M)
-    theta_samples = theta_samples[M//2:]
+    theta_samples = theta_samples[M // 2 :]
     print(theta_samples.min(), theta_samples.max())
     print(theta_samples.mean(), theta_samples.std())
