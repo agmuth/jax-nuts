@@ -63,3 +63,35 @@ class NormalProcessMeanKnown:
     @property
     def posterior_mean(self):
         return self.a_prime * self.b_prime
+
+
+class BernoulliProcess:
+    def __init__(self, x_sum, n, a, b):
+        self.x_sum = x_sum
+        self.n = n
+        self.a = a
+        self.b = b
+
+        self.a_prime = self.a + self.x_sum
+        self.b_prime = self.b + self.n - self.x_sum
+
+    def __call__(self, theta):
+        p = self.inv_logit(theta[0])
+        loglik = 0
+        loglik += (self.a_prime - 1) * jnp.log(p)
+        loglik += (self.b_prime - 1) * jnp.log(1 - p)
+        return loglik
+
+    @property
+    def posterior_mean(self):
+        return self.a_prime / (self.a_prime + self.b_prime)
+
+    @staticmethod
+    def logit(x):
+        # (0, 1) -> R
+        return jnp.log(x) - jnp.log(1 - x)
+
+    @staticmethod
+    def inv_logit(x):
+        # R -> (0, 1)
+        return (1 + jnp.exp(-x)) ** -1
