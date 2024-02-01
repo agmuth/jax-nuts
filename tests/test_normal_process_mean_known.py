@@ -35,7 +35,7 @@ problems = [
 def test_normal_process_mean_known(problem: ProblemInstance):
     cp = NormalProcessMeanKnown(**problem.dict())
     nuts = NoUTurnSampler(loglik=cp)
-    theta_0 = jnp.array([266.5])
+    theta_0 = jnp.array([1.0])
     M = 200
     theta_samples = nuts(theta_0, M)
     theta_samples = theta_samples[M // 2 :]
