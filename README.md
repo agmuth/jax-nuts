@@ -7,3 +7,6 @@ No-U-Turn Sampler Written in JAX
 - [ ] school example
 - [ ] typing hint + document
 - [ ] jit
+
+
+https://github.com/google/jax/discussions/10598

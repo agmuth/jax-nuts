@@ -1,35 +1,68 @@
 import jax
 import jax.numpy as jnp
+from typing import Union
+
+from jax.tree_util import register_pytree_node_class, Partial
+# class PRNGKeySequence:
+#     def __init__(self, seed: int) -> None:
+#         self.key = jax.random.PRNGKey(seed=seed)
+
+#     def __next__(self):
+#         _, self.key = jax.random.split(self.key)
+#         return self.key
+
+#     def __iter__(self):
+#         return self
+
+#     def __call__(self):
+#         return self.__next__()
 
 
+@register_pytree_node_class
 class PRNGKeySequence:
     def __init__(self, seed: int) -> None:
         self.key = jax.random.PRNGKey(seed=seed)
 
-    def __next__(self):
+    @jax.jit
+    def __call__(self):
         _, self.key = jax.random.split(self.key)
         return self.key
+    
+    def tree_flatten(self):
+        _, self.key = jax.random.split(self.key)
+        children = (self.key[-1],)
+        aux_data = None
+        return (children, aux_data)
+    
+    
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
-    def __iter__(self):
-        return self
-
-    def __call__(self):
-        return self.__next__()
-
-
+@register_pytree_node_class
 class NoUTurnSampler:
     def __init__(self, loglik):
         # loglik = jax.jit(loglik)
-        self.theta_loglik = loglik
-        self.theta_loglik_grad = jax.grad(loglik)
-        # self.theta_loglik_hess = jax.jacfwd(jax.jacrev(loglik))
-        self.theta_r_loglik = lambda theta, r: loglik(theta) - 0.5 * jnp.dot(r, r)
-        self.theta_r_lik = lambda theta, r: jnp.exp(self.theta_r_loglik(theta, r))
+        self.theta_loglik = Partial(jax.jit(loglik))
+        self.theta_loglik_grad = Partial(jax.jit(jax.grad(loglik)))
+        self.theta_r_loglik = Partial(jax.jit(lambda theta, r: loglik(theta) - 0.5 * jnp.dot(r, r)))
+        self.theta_r_lik = Partial(jax.jit(lambda theta, r: jnp.exp(self.theta_r_loglik(theta, r))))
 
         # TODO: move to `__call__`
         self.seed = 1234
         self.png_key_seq = PRNGKeySequence(self.seed)
         self.delta_max = 1_000
+        
+    
+    def tree_flatten(self):
+        children = (self.theta_loglik,)
+        aux_data = None
+        return (children, aux_data)
+    
+    
+    @classmethod
+    def tree_unflatten(cls, aux_data, children):
+        return cls(*children)
 
     def __call__(
         self, theta_0, M, M_adapt=None, delta=None, gamma=None, kappa=None, t_0=None
@@ -138,6 +171,7 @@ class NoUTurnSampler:
 
         return theta_samples
 
+    
     def _build_tree(self, theta, r, u, v, j, eps, theta_0, r_0):
         if j == 0:
             # base case - take one leapfrog step in the direction of v
@@ -234,12 +268,14 @@ class NoUTurnSampler:
             n_alpha_prime,
         )
 
+    @jax.jit
     def _leapfrog(self, theta, r, eps):
         r_tilde = r + 0.5 * eps * self.theta_loglik_grad(theta)
         theta_tilde = theta + eps * r_tilde
         r_tilde = r_tilde + 0.5 * eps * self.theta_loglik_grad(theta_tilde)
         return theta_tilde, r_tilde
 
+    # @jax.jit
     def _find_reasonable_epsilon(self, theta):
         ln2 = jnp.log(2)
         dim_theta = theta.shape[0]

@@ -46,10 +46,10 @@ class NormalProcessMeanKnown:
     def __call__(self, theta):
         # posterior loglik for rho
 
-        rho = theta[0]
+        rho = self.inv_log(theta[0])
 
-        if rho <= 0:
-            return -jnp.inf
+        # if rho <= 0:
+        #     return -jnp.inf
 
         loglik = 0.0
         loglik += (self.a_prime - 1) * jnp.log(rho)
@@ -61,6 +61,16 @@ class NormalProcessMeanKnown:
     @property
     def posterior_mean(self):
         return self.a_prime * self.b_prime
+    
+    @staticmethod
+    def log(x):
+        # R+ -> R
+        return jnp.log(x)
+
+    @staticmethod
+    def inv_log(x):
+        # R -> R+
+        return jnp.exp(x)
 
 
 class BernoulliProcess:
