@@ -26,3 +26,21 @@ class CallFunc:
 if __name__ == "__main__":
     x = CallFunc(f = lambda x: x+1)
     print(x.call_f(1))
+    
+    from jax.lax import while_loop, cond
+    n = 1
+    cond_fun = lambda x: x < 10
+    body_fun = lambda x: x+1
+    init_val = 1
+    
+    n = while_loop(cond_fun, body_fun, init_val)
+    print(n)
+    
+    print(cond(True, lambda: 1, lambda: 0))
+    
+    def recursion(n):
+        if n == 0:
+            return n
+        return cond(False, lambda: recursion(n-1), lambda: None)
+    
+    print(recursion(10))

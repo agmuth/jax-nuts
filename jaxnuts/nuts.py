@@ -1,6 +1,7 @@
 import jax
 import jax.numpy as jnp
-from typing import Union
+from typing import Union, Tuple, Dict
+from jax.lax import while_loop, cond
 
 from jax.tree_util import register_pytree_node_class, Partial
 # class PRNGKeySequence:
@@ -172,6 +173,71 @@ class NoUTurnSampler:
         return theta_samples
 
     
+    
+    # def _build_tree(self, theta, r, u, v, j, eps, theta_0, r_0):
+        
+    #     val = {
+    #         "theta": theta,
+    #         "r": r,
+    #         "u": u,
+    #         "v": v,
+    #         "j": j,
+    #         "eps": eps,
+    #         "theta_0": theta_0, 
+    #         "r_0": r_0,
+
+    #     }
+    #     val = while_loop(
+    #         self._build_tree_while_cond,
+    #         self._build_tree_while_body,
+    #         val,
+    #     )
+        
+
+    # def _build_tree_while_cond(self, val):
+    #     return val["j"] >= 0
+    
+    # def _build_tree_while_body(self, val):
+    #     val = cond(
+    #         val["j"] == 0,
+    #         self._build_tree_base_case,
+    #         self._build_tree_non_base_case,
+    #         val,
+    #     )
+    #     return val
+    
+    # def _build_tree_base_case(self, theta, r, u, v, j, eps, theta_0, r_0):
+    #     theta_prime, r_prime = self._leapfrog(theta, r, eps * v)
+
+    #     joint_loglik_prime = self.theta_r_loglik(theta_prime, r_prime)
+    #     joint_loglik_0 = self.theta_r_loglik(theta_0, r_0)
+    #     delta_loglik = joint_loglik_prime - joint_loglik_0
+
+    #     n_prime = jnp.where(u <= jnp.exp(joint_loglik_prime), 1, 0)
+    #     s_prime = jnp.where(jnp.log(u) < joint_loglik_prime + self.delta_max, 1, 0)
+
+    #     alpha = jnp.minimum(1.0, jnp.exp(delta_loglik))
+    #     n_alpha = 1
+
+    #     return (
+    #         theta_prime,
+    #         r_prime,
+    #         theta_prime,
+    #         r_prime,
+    #         theta_prime,
+    #         n_prime,
+    #         s_prime,
+    #         alpha,
+    #         n_alpha,
+    #     )
+    
+    
+    # def _build_tree_non_base_case(self, val):
+    #     pass
+    
+   
+
+    
     def _build_tree(self, theta, r, u, v, j, eps, theta_0, r_0):
         if j == 0:
             # base case - take one leapfrog step in the direction of v
@@ -275,7 +341,7 @@ class NoUTurnSampler:
         r_tilde = r_tilde + 0.5 * eps * self.theta_loglik_grad(theta_tilde)
         return theta_tilde, r_tilde
 
-    # @jax.jit
+    # @jax.jit #jit here messes up some tests
     def _find_reasonable_epsilon(self, theta):
         ln2 = jnp.log(2)
         dim_theta = theta.shape[0]
@@ -290,10 +356,38 @@ class NoUTurnSampler:
         ln_p = self.theta_r_loglik(theta, r)
         ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
-        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
-        while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
-            eps *= 2.0**alpha
-            theta_prime, r_prime = self._leapfrog(theta, r, eps)
-            ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
-
+        alpha = cond(ln_p_prime - ln_p > -ln2, lambda: 1, lambda: -1)
+        # alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
+    
+        
+        # while loop parmas
+        val = {
+            "eps": eps,
+            "alpha": alpha,
+            "theta_prime": theta_prime,
+            "r_prime": r_prime,
+            "theta": theta,
+            "r": r,
+            "ln_p": ln_p,
+        }           
+        val = while_loop(
+            self._find_reasonable_epsilon_while_loop_cond, 
+            self._find_reasonable_epsilon_while_loop_body, 
+            val,
+        )
+        eps = val["eps"]
         return eps
+    
+    @jax.jit
+    def _find_reasonable_epsilon_while_loop_body(self, val: Dict):
+        eps, alpha, theta, r = val["eps"], val["alpha"], val["theta"], val["r"]
+        eps *= 2.0**alpha
+        theta_prime, r_prime = self._leapfrog(theta, r, eps)
+        val["eps"], val["theta_prime"], val["r_prime"] = eps, theta_prime, r_prime
+        return val
+
+    @jax.jit
+    def _find_reasonable_epsilon_while_loop_cond(self, val: Dict):
+        ln2 = jnp.log(2)
+        alpha, theta_prime, r_prime, ln_p = val["alpha"], val["theta_prime"], val["r_prime"], val["ln_p"]
+        return alpha * (self.theta_r_loglik(theta_prime, r_prime) - ln_p) > -alpha * ln2
