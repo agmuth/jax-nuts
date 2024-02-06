@@ -197,8 +197,6 @@ class NoUTurnSampler:
         theta_samples = theta_samples.at[0].set(theta_0)
 
         for m in range(1, M + 1):
-            # if m == 5:
-            #     print()
             theta_m = theta_samples[m - 1]
             r_0 = jax.random.multivariate_normal(
                 key=self.png_key_seq(),
@@ -229,18 +227,22 @@ class NoUTurnSampler:
                     (
                         theta_minus,
                         r_minus,
+                        theta_prime,
                         n_prime,
                         s_prime,
-                        theta_prime,
-                    ) = self._build_tree_for_loop(theta_minus, r_minus, u, v_j, j, eps)
+                        alpha,
+                        n_alpha,
+                    ) = self._build_tree_for_loop(theta_minus, r_minus, u, v_j, j, eps, theta_m_minus_one, r_0)
                 else:
                     (
                         theta_plus,
                         r_plus,
+                        theta_prime,
                         n_prime,
                         s_prime,
-                        theta_prime,
-                    ) = self._build_tree_for_loop(theta_plus, r_plus, u, v_j, j, eps)
+                        alpha,
+                        n_alpha,
+                    ) = self._build_tree_for_loop(theta_plus, r_plus, u, v_j, j, eps, theta_m_minus_one, r_0)
 
                 if s_prime == 1:
                     if (
@@ -259,88 +261,106 @@ class NoUTurnSampler:
                 n += n_prime
                 j += 1
 
-            
+            if m < M_adapt:  # adapt accpetance params
+                # split out updates to avoid having to save vectors
+                H_bar *= 1 - 1 / (m + t_0)
+                H_bar += +(delta - alpha / n_alpha) / (m + t_0)
+                # on log scale
+                eps = mu - jnp.sqrt(m) / gamma * H_bar
+                eps_bar = m**-kappa * eps + (1 - m**-kappa) * jnp.log(eps_bar)
+                # exponentiate for next iter
+                eps = jnp.exp(eps)
+                eps_bar = jnp.exp(eps_bar)
+            else:
+                eps = eps_bar
             
             theta_samples = theta_samples.at[m].set(theta_m)
 
         return theta_samples
 
-    def _build_tree_for_loop(self, theta, r, u, v, j, eps):
+    def _build_tree_for_loop(self, theta, r, u, v, j, eps, theta_0, r_0):
+        joint_loglik_0 = self.theta_r_loglik(theta_0, r_0)
         
         s_prime = 1
         n_prime = 0
+        alpha_prime = 0
+        n_alpha_prime = 0
 
-        theta_sampled = theta
+        theta_prime = theta
 
         for _ in range(2**j):
-            theta_prime, r_prime = self._leapfrog(theta, r, eps * v)
-            joint_loglik_prime = self.theta_r_loglik(theta_prime, r_prime)
-            n_prime += int(u <= jnp.exp(joint_loglik_prime))
+            theta_plus_or_minus, r_plus_or_minus = self._leapfrog(theta, r, eps * v)
+            joint_loglik_plus_or_minus = self.theta_r_loglik(theta_plus_or_minus, r_plus_or_minus)
+            
+            
+            n_prime += int(u <= jnp.exp(joint_loglik_plus_or_minus))
 
-            if u <= jnp.exp(joint_loglik_prime):
+            if u <= jnp.exp(joint_loglik_plus_or_minus):
                 n_prime += 1
                 if (
                     jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
                     < 1 / n_prime
                 ):  # prob of transistion
-                    theta_sampled = theta_prime
+                    theta_prime = theta_plus_or_minus
 
-            s_prime = int(jnp.log(u) < joint_loglik_prime + self.delta_max)
+            s_prime = int(jnp.log(u) < joint_loglik_plus_or_minus + self.delta_max)
         # can move this inside forloop for earyly termination?
         theta_delta = (
-            theta_prime - theta
+            theta_plus_or_minus - theta
         ) * v  # need to reverse order if going backwards in time
         s_prime *= int(
-            (jnp.dot(theta_delta, r_prime) >= 0) * (jnp.dot(theta_delta, r) >= 0)
+            (jnp.dot(theta_delta, r_plus_or_minus) >= 0) * (jnp.dot(theta_delta, r) >= 0)
         )
+        alpha_prime += min(1, jnp.exp(joint_loglik_plus_or_minus - joint_loglik_0))
+        n_alpha_prime += 1
 
-        return theta_prime, r_prime, n_prime, s_prime, theta_sampled
+        return theta_plus_or_minus, r_plus_or_minus, theta_prime, n_prime, s_prime, alpha_prime, n_alpha_prime
 
-    def _build_tree(self, theta, r, u, v, j, eps):
-        if j == 0:
-            theta_prime, r_prime = self._leapfrog(theta, r, eps * v)
-            joint_loglik_prime = self.theta_r_loglik(theta_prime, r_prime)
-            C_prime = list()
-            if u <= jnp.exp(joint_loglik_prime):
-                C_prime.append((theta_prime, r_prime))
-            s_prime = int(jnp.log(u) < joint_loglik_prime + self.delta_max)
-            return theta_prime, r_prime, theta_prime, r_prime, C_prime, s_prime
-        else:
-            (
-                theta_minus,
-                r_minus,
-                theta_plus,
-                r_plus,
-                C_prime,
-                s_prime,
-            ) = self._build_tree(theta, r, u, v, j - 1, eps)
-            if v == -1:
-                (
-                    theta_minus,
-                    r_minus,
-                    _,
-                    _,
-                    C_double_prime,
-                    s_double_prime,
-                ) = self._build_tree(theta_minus, r_minus, u, v, j - 1, eps)
-            else:
-                (
-                    _,
-                    _,
-                    theta_plus,
-                    r_plus,
-                    C_double_prime,
-                    s_double_prime,
-                ) = self._build_tree(theta_plus, r_plus, u, v, j - 1, eps)
+    # def _build_tree(self, theta, r, u, v, j, eps):
+    #     if j == 0:
+    #         theta_prime, r_prime = self._leapfrog(theta, r, eps * v)
+    #         joint_loglik_prime = self.theta_r_loglik(theta_prime, r_prime)
+    #         C_prime = list()
+    #         if u <= jnp.exp(joint_loglik_prime):
+    #             C_prime.append((theta_prime, r_prime))
+    #         s_prime = int(jnp.log(u) < joint_loglik_prime + self.delta_max)
+    #         return theta_prime, r_prime, theta_prime, r_prime, C_prime, s_prime
+    #     else:
+    #         (
+    #             theta_minus,
+    #             r_minus,
+    #             theta_plus,
+    #             r_plus,
+    #             C_prime,
+    #             s_prime,
+    #         ) = self._build_tree(theta, r, u, v, j - 1, eps)
+    #         if v == -1:
+    #             (
+    #                 theta_minus,
+    #                 r_minus,
+    #                 _,
+    #                 _,
+    #                 C_double_prime,
+    #                 s_double_prime,
+    #             ) = self._build_tree(theta_minus, r_minus, u, v, j - 1, eps)
+    #         else:
+    #             (
+    #                 _,
+    #                 _,
+    #                 theta_plus,
+    #                 r_plus,
+    #                 C_double_prime,
+    #                 s_double_prime,
+    #             ) = self._build_tree(theta_plus, r_plus, u, v, j - 1, eps)
 
-            theta_delta = theta_plus - theta_minus
-            s_prime *= int(
-                s_double_prime
-                * (jnp.dot(theta_delta, r_minus) >= 0)
-                * (jnp.dot(theta_delta, r_plus) >= 0)
-            )
-            C_prime += C_double_prime
-        return (theta_minus, r_minus, theta_plus, r_plus, C_prime, s_prime)
+    #         theta_delta = theta_plus - theta_minus
+    #         s_prime *= int(
+    #             s_double_prime
+    #             * (jnp.dot(theta_delta, r_minus) >= 0)
+    #             * (jnp.dot(theta_delta, r_plus) >= 0)
+    #         )
+    #         C_prime += C_double_prime
+    #     return (theta_minus, r_minus, theta_plus, r_plus, C_prime, s_prime)
 
     # def _build_tree(self, theta, r, u, v, j, eps, theta_0, r_0):
     #     if j == 0:
