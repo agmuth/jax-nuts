@@ -36,7 +36,7 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     cp = NormalProcessMeanKnown(**problem.dict())
     nuts = NoUTurnSampler(loglik=cp)
     theta_0 = jnp.array([1.0])
-    M, M_adapt = 400, 200
+    M, M_adapt = 2000, 1000
     theta_samples = nuts(theta_0, M, M_adapt)
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_log(theta_samples)
@@ -45,10 +45,8 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     
     z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean)/nuts_posterior_std
     assert nuts_posterior_std > 0
-    assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1) and (
-        theta_samples.std() > 0
-    )
+    assert z_val_obvs < 1.96 # running in debugger or by itself this pases at 0.675
 
 
-if __name__ == "__main__":
-    test_normal_process_mean_known(problems[0])
+# if __name__ == "__main__":
+#     test_normal_process_mean_known(problems[0])

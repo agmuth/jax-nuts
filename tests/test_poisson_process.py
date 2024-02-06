@@ -28,7 +28,7 @@ def test_poisson_process(problem: ProblemInstance):
     nuts = NoUTurnSampler(loglik=cp)
     theta_0 = jnp.array([1.0])
     theta_0 = cp.log(theta_0)
-    M, M_adapt = 800, 400
+    M, M_adapt = 2000, 1000
     theta_samples = nuts(theta_0, M, M_adapt)
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_log(theta_samples)
@@ -37,10 +37,8 @@ def test_poisson_process(problem: ProblemInstance):
     
     z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean)/nuts_posterior_std
     assert nuts_posterior_std > 0
-    assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1) and (
-        theta_samples.std() > 0
-    )
+    assert z_val_obvs < 0.675
 
 
-if __name__ == "__main__":
-    test_poisson_process(problems[0])
+# if __name__ == "__main__":
+#     test_poisson_process(problems[0])
