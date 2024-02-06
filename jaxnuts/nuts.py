@@ -220,7 +220,7 @@ class NoUTurnSampler:
             j = 0
             s = 1
             n = 1
-            C = [(theta_m, r_0)]
+            
 
             while s == 1:
                 v_j = 2 * jax.random.bernoulli(self.png_key_seq()) - 1
@@ -229,55 +229,73 @@ class NoUTurnSampler:
                     (
                         theta_minus,
                         r_minus,
-                        C_prime,
+                        n_prime,
                         s_prime,
-                    ) = self._build_tree_for_loop(
-                        theta_minus, r_minus, u, v_j, j, eps
-                    )
+                        theta_prime,
+                    ) = self._build_tree_for_loop(theta_minus, r_minus, u, v_j, j, eps)
                 else:
-                    (theta_plus, r_plus, C_prime, s_prime) = self._build_tree_for_loop(
-                        theta_plus, r_plus, u, v_j, j, eps
-                    )
+                    (
+                        theta_plus,
+                        r_plus,
+                        n_prime,
+                        s_prime,
+                        theta_prime,
+                    ) = self._build_tree_for_loop(theta_plus, r_plus, u, v_j, j, eps)
 
                 if s_prime == 1:
-                    C += C_prime
+                    if (
+                        jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
+                        < n_prime / n
+                    ):  # prob of transistion
+                        theta_m = theta_prime
+                    
+                    
                 theta_delta = theta_plus - theta_minus
                 s *= (
                     s_prime
                     * (jnp.dot(theta_delta, r_minus) >= 0)
                     * (jnp.dot(theta_delta, r_plus) >= 0)
                 )
+                n += n_prime
                 j += 1
 
-            idx = jax.random.randint(self.png_key_seq(), shape=(1,), minval=0, maxval=len(C))
-            theta_m = C[idx[0]][0]
+            
+            
             theta_samples = theta_samples.at[m].set(theta_m)
 
         return theta_samples
 
     def _build_tree_for_loop(self, theta, r, u, v, j, eps):
-        C_prime = list()
-        s_prime = 1
         
+        s_prime = 1
+        n_prime = 0
+
+        theta_sampled = theta
+
         for _ in range(2**j):
             theta_prime, r_prime = self._leapfrog(theta, r, eps * v)
             joint_loglik_prime = self.theta_r_loglik(theta_prime, r_prime)
-            
-            if u <= jnp.exp(joint_loglik_prime):
-                C_prime.append((theta_prime, r_prime))
-            
-            s_prime = int(jnp.log(u) < joint_loglik_prime + self.delta_max)
-            
-        theta_delta = (theta_prime - theta) * v  # need to reverse order if going backwards in time
-        s_prime *= int(
-            (jnp.dot(theta_delta, r_prime) >= 0)
-            * (jnp.dot(theta_delta, r) >= 0)
-        )
-        
-        return theta_prime, r_prime, C_prime, s_prime
-        
+            n_prime += int(u <= jnp.exp(joint_loglik_prime))
 
-    
+            if u <= jnp.exp(joint_loglik_prime):
+                n_prime += 1
+                if (
+                    jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
+                    < 1 / n_prime
+                ):  # prob of transistion
+                    theta_sampled = theta_prime
+
+            s_prime = int(jnp.log(u) < joint_loglik_prime + self.delta_max)
+        # can move this inside forloop for earyly termination?
+        theta_delta = (
+            theta_prime - theta
+        ) * v  # need to reverse order if going backwards in time
+        s_prime *= int(
+            (jnp.dot(theta_delta, r_prime) >= 0) * (jnp.dot(theta_delta, r) >= 0)
+        )
+
+        return theta_prime, r_prime, n_prime, s_prime, theta_sampled
+
     def _build_tree(self, theta, r, u, v, j, eps):
         if j == 0:
             theta_prime, r_prime = self._leapfrog(theta, r, eps * v)
