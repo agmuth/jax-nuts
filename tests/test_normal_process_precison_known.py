@@ -40,6 +40,10 @@ def test_normal_process_precison_known(problem: ProblemInstance):
     theta_samples = nuts(theta_0, M, M_adapt)
     theta_samples = theta_samples[M_adapt:]
     nuts_posterior_mean = theta_samples.mean()
+    nuts_posterior_std = theta_samples.std()
+    
+    z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean)/nuts_posterior_std
+    assert nuts_posterior_std > 0
     assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1) and (
         theta_samples.std() > 0
     )
