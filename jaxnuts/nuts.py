@@ -268,7 +268,7 @@ class NoUTurnSampler:
             
             s_prime = int(jnp.log(u) < joint_loglik_prime + self.delta_max)
             
-        theta_delta = (theta_prime - theta) * v
+        theta_delta = (theta_prime - theta) * v  # need to reverse order if going backwards in time
         s_prime *= int(
             (jnp.dot(theta_delta, r_prime) >= 0)
             * (jnp.dot(theta_delta, r) >= 0)
