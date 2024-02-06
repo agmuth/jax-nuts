@@ -36,7 +36,7 @@ def test_poisson_process(problem: ProblemInstance):
     assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.22) and (
         theta_samples.std() > 0
     )
-    
+
+
 if __name__ == "__main__":
     test_poisson_process(problems[0])
-

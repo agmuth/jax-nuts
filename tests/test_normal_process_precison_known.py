@@ -43,3 +43,8 @@ def test_normal_process_precison_known(problem: ProblemInstance):
     assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0.1) and (
         theta_samples.std() > 0
     )
+
+
+
+if __name__ == "__main__":
+    test_normal_process_precison_known(problems[0])

@@ -61,7 +61,7 @@ class NormalProcessMeanKnown:
     @property
     def posterior_mean(self):
         return self.a_prime * self.b_prime
-    
+
     @staticmethod
     def log(x):
         # R+ -> R
