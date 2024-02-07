@@ -6,20 +6,6 @@ import numpy as np
 
 from jax.tree_util import register_pytree_node_class, Partial
 
-# class PRNGKeySequence:
-#     def __init__(self, seed: int) -> None:
-#         self.key = jax.random.PRNGKey(seed=seed)
-
-#     def __next__(self):
-#         _, self.key = jax.random.split(self.key)
-#         return self.key
-
-#     def __iter__(self):
-#         return self
-
-#     def __call__(self):
-#         return self.__next__()
-
 
 @register_pytree_node_class
 class PRNGKeySequence:
@@ -116,43 +102,33 @@ class NoUTurnSampler:
 
             # initialize vars
             theta_m_minus_one = theta_samples[m - 1]
-            theta_minus, theta_plus = (
-                theta_samples[m - 1],
-                theta_samples[m - 1],
-            )
-            r_minus, r_plus = r_0, r_0
+            theta_plus_minus = jnp.array([theta_samples[m - 1], theta_samples[m - 1]])
+            r_plus_minus = jnp.array([r_0, r_0])
 
             j = 0
             s = 1
             n = 1
 
             while s == 1:
-                v_j = 2 * jax.random.bernoulli(self.png_key_seq()) - 1
+                idx_star = jax.random.bernoulli(self.png_key_seq()).astype(jnp.int32)
+                v_j = 2 * idx_star - 1
+                theta_star = theta_plus_minus[idx_star]
+                r_star = r_plus_minus[idx_star]
 
-                if v_j == -1:
-                    (
-                        theta_minus,
-                        r_minus,
-                        theta_prime,
-                        n_prime,
-                        s_prime,
-                        alpha,
-                        n_alpha,
-                    ) = self._build_tree_while_loop(
-                        theta_minus, r_minus, u, v_j, j, eps, theta_m_minus_one, r_0
-                    )
-                else:
-                    (
-                        theta_plus,
-                        r_plus,
-                        theta_prime,
-                        n_prime,
-                        s_prime,
-                        alpha,
-                        n_alpha,
-                    ) = self._build_tree_while_loop(
-                        theta_plus, r_plus, u, v_j, j, eps, theta_m_minus_one, r_0
-                    )
+                (
+                    theta_star,
+                    r_star,
+                    theta_prime,
+                    n_prime,
+                    s_prime,
+                    alpha,
+                    n_alpha,
+                ) = self._build_tree_while_loop(
+                    theta_star, r_star, u, v_j, j, eps, theta_m_minus_one, r_0
+                )
+
+                theta_plus_minus = theta_plus_minus.at[idx_star].set(theta_star)
+                r_plus_minus = r_plus_minus.at[idx_star].set(r_star)
 
                 if s_prime == 1:
                     if (
@@ -161,19 +137,19 @@ class NoUTurnSampler:
                     ):  # prob of transistion
                         theta_m = theta_prime
 
-                theta_delta = theta_plus - theta_minus
+                theta_delta = theta_plus_minus[1] - theta_plus_minus[0]
                 s *= (
                     s_prime
-                    * (jnp.dot(theta_delta, r_minus) >= 0)
-                    * (jnp.dot(theta_delta, r_plus) >= 0)
+                    * (jnp.dot(theta_delta, r_plus_minus[0]) >= 0)
+                    * (jnp.dot(theta_delta, r_plus_minus[1]) >= 0)
                 )
                 n += n_prime
                 j += 1
 
-
-   
             if m < M_adapt:  # adapt accpetance params
-                eps, eps_bar, H_bar = self._dual_average(eps, eps_bar, H_bar, mu, alpha, n_alpha, m)
+                eps, eps_bar, H_bar = self._dual_average(
+                    eps, eps_bar, H_bar, mu, alpha, n_alpha, m
+                )
             else:
                 eps = eps_bar
 
@@ -182,15 +158,44 @@ class NoUTurnSampler:
         return theta_samples
 
     @jax.jit
+    def _leapfrog(self, theta, r, eps):
+        r_tilde = r + 0.5 * eps * self.theta_loglik_grad(theta)
+        theta_tilde = theta + eps * r_tilde
+        r_tilde = r_tilde + 0.5 * eps * self.theta_loglik_grad(theta_tilde)
+        return theta_tilde, r_tilde
+
+    def _find_reasonable_epsilon(self, theta):
+        ln2 = jnp.log(2)
+        dim_theta = theta.shape[0]
+        eps = 1.0
+        r = jax.random.multivariate_normal(
+            key=self.png_key_seq(),
+            mean=jnp.zeros(dim_theta),
+            cov=jnp.eye(dim_theta),
+        )
+
+        theta_prime, r_prime = self._leapfrog(theta, r, eps)
+        ln_p = self.theta_r_loglik(theta, r)
+        ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
+
+        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
+        while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
+            eps *= 2.0**alpha
+            theta_prime, r_prime = self._leapfrog(theta, r, eps)
+            ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
+
+        return eps
+
+    @jax.jit
     def _dual_average(self, eps, eps_bar, H_bar, mu, alpha, n_alpha, m):
         # split out updates to avoid having to save vectors
         H_bar *= 1 - 1 / (m + self.t_0)
         H_bar += +(self.delta - alpha / n_alpha) / (m + self.t_0)
-        
+
         # on log scale
         eps = mu - jnp.sqrt(m) / self.gamma * H_bar
         eps_bar = m**-self.kappa * eps + (1 - m**-self.kappa) * jnp.log(eps_bar)
-        
+
         # exponentiate for next iter
         eps = jnp.exp(eps)
         eps_bar = jnp.exp(eps_bar)
@@ -218,7 +223,9 @@ class NoUTurnSampler:
 
         return theta_double_star, r_double_star, n, s, alpha, n_alpha
 
+    
     @staticmethod
+    @jax.jit
     def _check_for_u_turn(theta_plus, r_plus, theta_minus, r_minus, v):
         theta_delta = (
             theta_plus - theta_minus
@@ -315,80 +322,3 @@ class NoUTurnSampler:
                     )
 
         return theta_double_star, r_double_star, theta_prime, n, s, alpha, n_alpha
-
-    def _build_tree_for_loop(self, theta, r, u, v, j, eps, theta_0, r_0):
-        joint_loglik_0 = self.theta_r_loglik(theta_0, r_0)
-
-        s_prime = 1
-        n_prime = 0
-        alpha_prime = 0
-        n_alpha_prime = 0
-
-        theta_prime = theta
-
-        for _ in range(2**j):
-            theta_plus_or_minus, r_plus_or_minus = self._leapfrog(theta, r, eps * v)
-            joint_loglik_plus_or_minus = self.theta_r_loglik(
-                theta_plus_or_minus, r_plus_or_minus
-            )
-
-            n_prime += int(u <= jnp.exp(joint_loglik_plus_or_minus))
-
-            if u <= jnp.exp(joint_loglik_plus_or_minus):
-                n_prime += 1
-                if (
-                    jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
-                    < 1 / n_prime
-                ):  # prob of transistion
-                    theta_prime = theta_plus_or_minus
-
-            s_prime = int(jnp.log(u) < joint_loglik_plus_or_minus + self.delta_max)
-        # can move this inside forloop for earyly termination?
-        theta_delta = (
-            theta_plus_or_minus - theta
-        ) * v  # need to reverse order if going backwards in time
-        s_prime *= int(
-            (jnp.dot(theta_delta, r_plus_or_minus) >= 0)
-            * (jnp.dot(theta_delta, r) >= 0)
-        )
-        alpha_prime += min(1, jnp.exp(joint_loglik_plus_or_minus - joint_loglik_0))
-        n_alpha_prime += 1
-
-        return (
-            theta_plus_or_minus,
-            r_plus_or_minus,
-            theta_prime,
-            n_prime,
-            s_prime,
-            alpha_prime,
-            n_alpha_prime,
-        )
-
-    @jax.jit
-    def _leapfrog(self, theta, r, eps):
-        r_tilde = r + 0.5 * eps * self.theta_loglik_grad(theta)
-        theta_tilde = theta + eps * r_tilde
-        r_tilde = r_tilde + 0.5 * eps * self.theta_loglik_grad(theta_tilde)
-        return theta_tilde, r_tilde
-
-    def _find_reasonable_epsilon(self, theta):
-        ln2 = jnp.log(2)
-        dim_theta = theta.shape[0]
-        eps = 1.0
-        r = jax.random.multivariate_normal(
-            key=self.png_key_seq(),
-            mean=jnp.zeros(dim_theta),
-            cov=jnp.eye(dim_theta),
-        )
-
-        theta_prime, r_prime = self._leapfrog(theta, r, eps)
-        ln_p = self.theta_r_loglik(theta, r)
-        ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
-
-        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
-        while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
-            eps *= 2.0**alpha
-            theta_prime, r_prime = self._leapfrog(theta, r, eps)
-            ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
-
-        return eps
