@@ -29,6 +29,10 @@ class NormalProcessPrecisonKnown:
     @property
     def posterior_mean(self):
         return self.m_prime
+    
+    @property
+    def prior_mean(self):
+        return self.m
 
 
 class NormalProcessMeanKnown:
@@ -61,6 +65,10 @@ class NormalProcessMeanKnown:
     @property
     def posterior_mean(self):
         return self.a_prime * self.b_prime
+    
+    @property
+    def prior_mean(self):
+        return self.a * self.b
 
     @staticmethod
     def log(x):
@@ -93,6 +101,10 @@ class BernoulliProcess:
     @property
     def posterior_mean(self):
         return self.a_prime / (self.a_prime + self.b_prime)
+    
+    @property
+    def prior_mean(self):
+        return self.a / (self.a + self.b)
 
     @staticmethod
     def logit(x):
@@ -128,6 +140,10 @@ class PoissonProcess:
     @property
     def posterior_mean(self):
         return self.a_prime * self.b_prime
+    
+    @property
+    def prior_mean(self):
+        return self.a * self.b
 
     @staticmethod
     def log(x):

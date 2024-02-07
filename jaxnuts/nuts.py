@@ -44,7 +44,7 @@ class PRNGKeySequence:
 
 @register_pytree_node_class
 class NoUTurnSampler:
-    def __init__(self, loglik):
+    def __init__(self, loglik, delta=0.5 * (0.95 + 0.25), gamma=0.05, kappa=0.75, t_0=10, delta_max=1_000, seed=1234):
         
         self.theta_loglik = Partial(jax.jit(loglik))
         self.theta_loglik_grad = Partial(jax.jit(jax.grad(loglik)))
@@ -54,14 +54,26 @@ class NoUTurnSampler:
         self.theta_r_lik = Partial(
             jax.jit(lambda theta, r: jnp.exp(self.theta_r_loglik(theta, r)))
         )
-
-        # TODO: move to `__call__`
-        self.seed = 1234
+        
+        self.delta = delta
+        self.gamma = gamma
+        self.kappa = kappa
+        self.t_0 = t_0
+        self.delta_max = delta_max
+        self.seed = seed
         self.png_key_seq = PRNGKeySequence(self.seed)
-        self.delta_max = 1_000
+        
 
     def tree_flatten(self):
-        children = (self.theta_loglik,)
+        children = (
+            self.theta_loglik,
+            self.delta,
+            self.gamma,
+            self.kappa,
+            self.t_0,
+            self.delta_max,
+            self.seed,
+        )
         aux_data = None
         return (children, aux_data)
 
@@ -71,13 +83,9 @@ class NoUTurnSampler:
 
     
     def __call__(
-        self, theta_0, M, M_adapt=None, delta=None, gamma=None, kappa=None, t_0=None
+        self, theta_0, M, M_adapt=None, 
     ):
-        M_adapt = M_adapt if M_adapt else M // 2
-        delta = delta if delta else 0.5 * (0.95 + 0.25)
-        gamma = gamma if gamma else 0.05
-        kappa = kappa if kappa else 0.75
-        t_0 = t_0 if t_0 else 10
+        
 
         eps = self._find_reasonable_epsilon(theta=theta_0)
         # eps = 1.
@@ -156,11 +164,11 @@ class NoUTurnSampler:
 
             if m < M_adapt:  # adapt accpetance params
                 # split out updates to avoid having to save vectors
-                H_bar *= 1 - 1 / (m + t_0)
-                H_bar += +(delta - alpha / n_alpha) / (m + t_0)
+                H_bar *= 1 - 1 / (m + self.t_0)
+                H_bar += +(self.delta - alpha / n_alpha) / (m + self.t_0)
                 # on log scale
-                eps = mu - jnp.sqrt(m) / gamma * H_bar
-                eps_bar = m**-kappa * eps + (1 - m**-kappa) * jnp.log(eps_bar)
+                eps = mu - jnp.sqrt(m) / self.gamma * H_bar
+                eps_bar = m**-self.kappa * eps + (1 - m**-self.kappa) * jnp.log(eps_bar)
                 # exponentiate for next iter
                 eps = jnp.exp(eps)
                 eps_bar = jnp.exp(eps_bar)
