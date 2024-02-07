@@ -47,5 +47,5 @@ def test_normal_process_precison_known(problem: ProblemInstance):
     assert z_val_obvs < 0.675
 
 
-# if __name__ == "__main__":
-#     test_normal_process_precison_known(problems[0])
+if __name__ == "__main__":
+    test_normal_process_precison_known(problems[0])

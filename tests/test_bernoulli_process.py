@@ -41,5 +41,5 @@ def test_bernoulli_process(problem: ProblemInstance):
 
 
 
-# if __name__ == "__main__":
-#     test_bernoulli_process(problems[0])
+if __name__ == "__main__":
+    test_bernoulli_process(problems[0])

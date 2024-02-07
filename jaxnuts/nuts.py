@@ -125,7 +125,7 @@ class NoUTurnSampler:
                         s_prime,
                         alpha,
                         n_alpha,
-                    ) = self._build_tree_for_loop(theta_minus, r_minus, u, v_j, j, eps, theta_m_minus_one, r_0)
+                    ) = self._build_tree_while_loop(theta_minus, r_minus, u, v_j, j, eps, theta_m_minus_one, r_0)
                 else:
                     (
                         theta_plus,
@@ -135,7 +135,7 @@ class NoUTurnSampler:
                         s_prime,
                         alpha,
                         n_alpha,
-                    ) = self._build_tree_for_loop(theta_plus, r_plus, u, v_j, j, eps, theta_m_minus_one, r_0)
+                    ) = self._build_tree_while_loop(theta_plus, r_plus, u, v_j, j, eps, theta_m_minus_one, r_0)
 
                 if s_prime == 1:
                     if (
@@ -170,6 +170,106 @@ class NoUTurnSampler:
             theta_samples = theta_samples.at[m].set(theta_m)
 
         return theta_samples
+    
+    
+    def _build_tree_single_step(self, theta_star, r_star, u, v, eps, theta_0, r_0):
+        ln_u = jnp.log(u)
+        
+        theta_double_star, r_double_star = self._leapfrog(theta_star, r_star, v*eps)  # push edge out one leapfrog step
+        joint_loglik_double_star = self.theta_r_loglik(theta_double_star, r_double_star)
+        joint_loglik_0 = self.theta_r_loglik(theta_0, r_0)
+        
+        n = ln_u <= joint_loglik_double_star  # indicator for if new edge state is eligible
+        s = ln_u <= joint_loglik_double_star + self.delta_max # early termination criteria (equ. 3)
+        
+        alpha = jnp.minimum(1.0, jnp.exp(joint_loglik_double_star - joint_loglik_0))
+        n_alpha = 1
+       
+        
+        return theta_double_star, r_double_star, n, s, alpha, n_alpha
+       
+    
+    @staticmethod
+    def _check_for_u_turn(theta_plus, r_plus, theta_minus, r_minus, v):
+        theta_delta = (theta_plus - theta_minus) * v  # need to reverse order if args passed in backwards
+        return (jnp.dot(theta_delta, r_plus) >= 0) * (jnp.dot(theta_delta, r_minus) >= 0)
+        
+        
+    def _build_tree_while_loop(self, theta_star, r_star, u, v, j, eps, theta_0, r_0):
+        left_leaf_nodes = jnp.array([(theta_star, r_star)]*j)  # array for storing leftmost leaf nodes in any subtree currently under consideration
+        
+        # HMC path vars
+        theta_prime = theta_star
+        s = 1
+        n = 1
+        
+        # dual averaging vars
+        alpha = 0.0
+        n_alpha = 0
+        
+        i = 0  # counter 
+        while s == 1 and i < 2**j:
+            i += 1 # incr here to align with b-tree 1-indexing
+            theta_double_star, r_double_star, n_prime, s_prime, alpha_prime, n_alpha_prime =  self._build_tree_single_step(theta_star, r_star, u, v, eps, theta_0, r_0)
+            
+            # update HMC path vars
+            s *= s_prime
+            n += n_prime
+            
+            if n_prime == 1:
+                if (
+                    jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
+                    < 1 / n
+                ):  # prob of transistion
+                    theta_prime = theta_double_star
+            
+            
+            # update dual averaging vars
+            alpha += alpha_prime
+            n_alpha += n_alpha_prime
+            if j == 0 : continue  # no u-turns possible
+            
+            # check for u-turn / update reference data used to check for u-turns
+            if i % 2 == 1:
+                """
+                if `i` is odd then it is the left-most leaf node of at least one balanced subtree
+                -> overwrite correspoding stale position value in `left_leaf_nodes`
+                
+                `i` is the left-most leaf node in a tree of height `k` if i%2**k == 1
+                we can range k from 1 to `j` to get if the current state is a left-most leaf node in the
+                current subtree of height `k`. Summing these values gives a unique index to store these 
+                states in `left_leaf_nodes`. Moreover it is safe to overwrite values in `left_leaf_nodes`
+                using this indexing schema since we are moving across the b-tree left-to-right (not proven
+                here but if a state is a left-most leaf node `l` times by the time we get to the next 
+                state used `l` times we will have already made `l` u-turn checks against the previous 
+                `l` times state)
+                """
+            
+                idx = -1  # python is 0-indexed b-tree is 1-indexed
+                for k in range(1, j+1):
+                    idx += i%(2**k)==1
+                left_leaf_nodes = left_leaf_nodes.at[idx].set((theta_double_star, r_double_star))
+            else:
+                """
+                if `i` is even then it is the right-most leaf node of at least one balanced subtree
+                -> check for u-turn
+                
+                `i` is the right-most leaf node in a tree of height `k` if i%(2**k) == 0
+                we can range from k from 1 to j to get which subtrees the current
+                state is a right most leaf node of
+                """
+                for k in range(1, j+1):
+                    if i % (2**k) != 0: continue
+                    s *= self._check_for_u_turn(
+                        theta_double_star,
+                        r_double_star,
+                        left_leaf_nodes[k][0],  # theta
+                        left_leaf_nodes[k][1],  # r
+                        v,
+                    )
+           
+        return theta_double_star, r_double_star, theta_prime, n, s, alpha, n_alpha
+        
 
     def _build_tree_for_loop(self, theta, r, u, v, j, eps, theta_0, r_0):
         joint_loglik_0 = self.theta_r_loglik(theta_0, r_0)

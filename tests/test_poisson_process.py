@@ -40,5 +40,5 @@ def test_poisson_process(problem: ProblemInstance):
     assert z_val_obvs < 0.675
 
 
-# if __name__ == "__main__":
-#     test_poisson_process(problems[0])
+if __name__ == "__main__":
+    test_poisson_process(problems[0])

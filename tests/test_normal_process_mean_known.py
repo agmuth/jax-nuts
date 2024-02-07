@@ -48,5 +48,5 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     assert z_val_obvs < 1.66 # running in debugger or by itself this pases at 0.675
 
 
-# if __name__ == "__main__":
-#     test_normal_process_mean_known(problems[0])
+if __name__ == "__main__":
+    test_normal_process_mean_known(problems[0])
