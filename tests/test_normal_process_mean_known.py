@@ -43,8 +43,8 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     theta_samples = cp.inv_log(theta_samples)
     nuts_posterior_mean = theta_samples.mean()
     nuts_posterior_std = theta_samples.std()
-    
-    z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean)/nuts_posterior_std
+
+    z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean) / nuts_posterior_std
     assert nuts_posterior_std > 0
     assert z_val_obvs < 0.84
 
