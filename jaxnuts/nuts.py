@@ -1,8 +1,9 @@
 import jax
 import jax.numpy as jnp
 from typing import Union, Tuple, Dict
-from jax.lax import while_loop, cond
+from jax.lax import while_loop, cond, select, select_n, fori_loop
 import numpy as np
+from jax import lax
 
 from jax.tree_util import register_pytree_node_class, Partial
 
@@ -202,6 +203,7 @@ class NoUTurnSampler:
 
         return eps, eps_bar, H_bar
 
+    @jax.jit
     def _build_tree_single_step(self, theta_star, r_star, u, v, eps, theta_0, r_0):
         ln_u = jnp.log(u)
 
@@ -223,7 +225,6 @@ class NoUTurnSampler:
 
         return theta_double_star, r_double_star, n, s, alpha, n_alpha
 
-    
     @staticmethod
     @jax.jit
     def _check_for_u_turn(theta_plus, r_plus, theta_minus, r_minus, v):
@@ -236,7 +237,7 @@ class NoUTurnSampler:
 
     def _build_tree_while_loop(self, theta_star, r_star, u, v, j, eps, theta_0, r_0):
         left_leaf_nodes = jnp.array(
-            [(theta_star, r_star)] * j
+            [(jnp.zeros(theta_star.shape), jnp.zeros(r_0.shape))] * max(1, j)  # get around ntreacing issues when j = 0
         )  # array for storing leftmost leaf nodes in any subtree currently under consideration
 
         # HMC path vars
@@ -266,59 +267,101 @@ class NoUTurnSampler:
             s *= s_prime
             n += n_prime
 
-            if n_prime == 1:
-                if (
-                    jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
-                    < 1 / n
-                ):  # prob of transistion
-                    theta_prime = theta_double_star
+            theta_prime = jnp.where(
+                n_prime == 1
+                and jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
+                < 1 / n,
+                theta_double_star,
+                theta_prime,
+            )
 
             # update dual averaging vars
             alpha += alpha_prime
             n_alpha += n_alpha_prime
-            if j == 0:
-                continue  # no u-turns possible
+            # if j == 0:
+                
+            #     return (
+            #         theta_double_star,
+            #         r_double_star,
+            #         theta_prime,
+            #         n,
+            #         s,
+            #         alpha,
+            #         n_alpha,
+            #     )
 
+
+            # if j == 0 no u-turns possible and while loop has expired
             # check for u-turn / update reference data used to check for u-turns
-            if i % 2 == 1:
-                """
-                if `i` is odd then it is the left-most leaf node of at least one balanced subtree
-                -> overwrite correspoding stale position value in `left_leaf_nodes`
+            """
+            if `i` is odd then it is the left-most leaf node of at least one balanced subtree
+            -> overwrite correspoding stale position value in `left_leaf_nodes`
 
-                `i` is the left-most leaf node in a tree of height `k` if i%2**k == 1
-                we can range k from 1 to `j` to get if the current state is a left-most leaf node in the
-                current subtree of height `k`. Summing these values gives a unique index to store these
-                states in `left_leaf_nodes`. Moreover it is safe to overwrite values in `left_leaf_nodes`
-                using this indexing schema since we are moving across the b-tree left-to-right (not proven
-                here but if a state is a left-most leaf node `l` times by the time we get to the next
-                state used `l` times we will have already made `l` u-turn checks against the previous
-                `l` times state)
-                """
+            `i` is the left-most leaf node in a tree of height `k` if i%2**k == 1
+            we can range k from 1 to `j` to get if the current state is a left-most leaf node in the
+            current subtree of height `k`. Summing these values gives a unique index to store these
+            states in `left_leaf_nodes`. Moreover it is safe to overwrite values in `left_leaf_nodes`
+            using this indexing schema since we are moving across the b-tree left-to-right (not proven
+            here but if a state is a left-most leaf node `l` times by the time we get to the next
+            state used `l` times we will have already made `l` u-turn checks against the previous
+            `l` times state)
+            """
+            
+            left_leaf_nodes = cond(
+                (i % 2 == 1)*(j>0),
+                lambda left_leaf_nodes, theta_double_star, r_double_star: (
+                    left_leaf_nodes.at[
+                        fori_loop(
+                            1,
+                            j + 1,
+                            lambda k, idx: idx
+                            + jnp.array(i % (2**k) == 1, jnp.int32),
+                            -1,
+                        )*(j>0)  # needed for tracer
+                    ].set((theta_double_star, r_double_star))
+                ),
+                lambda *args: left_leaf_nodes,
+                left_leaf_nodes,
+                theta_double_star,
+                r_double_star,
+            )
 
-                idx = -1  # python is 0-indexed b-tree is 1-indexed
-                for k in range(1, j + 1):
-                    idx += i % (2**k) == 1
-                left_leaf_nodes = left_leaf_nodes.at[idx].set(
-                    (theta_double_star, r_double_star)
-                )
-            else:
-                """
-                if `i` is even then it is the right-most leaf node of at least one balanced subtree
-                -> check for u-turn
+            """
+            if `i` is even then it is the right-most leaf node of at least one balanced subtree
+            -> check for u-turn
 
-                `i` is the right-most leaf node in a tree of height `k` if i%(2**k) == 0
-                we can range from k from 1 to j to get which subtrees the current
-                state is a right most leaf node of
-                """
-                for k in range(1, j + 1):
-                    if i % (2**k) != 0:
-                        continue
-                    s *= self._check_for_u_turn(
+            `i` is the right-most leaf node in a tree of height `k` if i%(2**k) == 0
+            we can range from k from 1 to j to get which subtrees the current
+            state is a right most leaf node of
+            """
+            
+            s = cond(
+                (i % 2 == 0)*(j>0),
+                lambda *args: fori_loop(
+                    1,
+                    j + 1,
+                    lambda k, s: s
+                    * cond(
+                        i % (2**k) != 0,
+                        lambda *args: True,
+                        self._check_for_u_turn,
                         theta_double_star,
                         r_double_star,
                         left_leaf_nodes[k][0],  # theta
                         left_leaf_nodes[k][1],  # r
                         v,
-                    )
+                    ),
+                    s,
+                ),
+                lambda *args: s,
+                theta_double_star,
+                r_double_star,
+                left_leaf_nodes,
+                left_leaf_nodes,
+                v,
+            )
 
         return theta_double_star, r_double_star, theta_prime, n, s, alpha, n_alpha
+
+
+    # def _update_left_leaf_nodes(self, theta_double_star, r_double_star, left_leaf_nodes, i, j, s)
