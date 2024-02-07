@@ -258,8 +258,8 @@ class NoUTurnSampler:
         while s == 1 and i < 2**j:
             i += 1  # incr here to align with b-tree 1-indexing
             (
-                theta_double_star,
-                r_double_star,
+                theta_star,
+                r_star,
                 n_prime,
                 s_prime,
                 alpha_prime,
@@ -276,7 +276,7 @@ class NoUTurnSampler:
                 n_prime == 1
                 and jax.random.uniform(key=self.png_key_seq(), minval=0, maxval=1)
                 < 1 / n,
-                theta_double_star,
+                theta_star,
                 theta_prime,
             )
 
@@ -303,7 +303,7 @@ class NoUTurnSampler:
             
             left_leaf_nodes = cond(
                 (i % 2 == 1)*(j>0),
-                lambda left_leaf_nodes, theta_double_star, r_double_star: (
+                lambda left_leaf_nodes, theta_star, r_star: (
                     left_leaf_nodes.at[
                         fori_loop(
                             1,
@@ -312,12 +312,12 @@ class NoUTurnSampler:
                             + jnp.array(i % (2**k) == 1, jnp.int32),
                             -1,
                         )*(j>0)  # needed for tracer
-                    ].set((theta_double_star, r_double_star))
+                    ].set((theta_star, r_star))
                 ),
                 lambda *args: left_leaf_nodes,
                 left_leaf_nodes,
-                theta_double_star,
-                r_double_star,
+                theta_star,
+                r_star,
             )
 
             """
@@ -339,8 +339,8 @@ class NoUTurnSampler:
                         i % (2**k) != 0,
                         lambda *args: True,
                         self._check_for_u_turn,
-                        theta_double_star,
-                        r_double_star,
+                        theta_star,
+                        r_star,
                         left_leaf_nodes[k][0],  # theta
                         left_leaf_nodes[k][1],  # r
                         v,
@@ -348,14 +348,14 @@ class NoUTurnSampler:
                     s,
                 ),
                 lambda *args: s,
-                theta_double_star,
-                r_double_star,
+                theta_star,
+                r_star,
                 left_leaf_nodes,
                 left_leaf_nodes,
                 v,
             )
 
-        return theta_double_star, r_double_star, theta_prime, n, s, alpha, n_alpha
+        return theta_star, r_star, theta_prime, n, s, alpha, n_alpha
 
 
     def _build_tree_while_loop_cond(self):
