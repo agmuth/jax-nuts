@@ -237,7 +237,7 @@ class NoUTurnSampler:
 
     def _build_tree_while_loop(self, theta_star, r_star, u, v, j, eps, theta_0, r_0):
         left_leaf_nodes = jnp.array(
-            [(jnp.zeros(theta_star.shape), jnp.zeros(r_0.shape))] * max(1, j)  # get around ntreacing issues when j = 0
+            [(jnp.zeros(theta_star.shape), jnp.zeros(r_0.shape))] * max(1, j)  # get around tracing issues when j = 0
         )  # array for storing leftmost leaf nodes in any subtree currently under consideration
 
         # HMC path vars
@@ -250,6 +250,11 @@ class NoUTurnSampler:
         n_alpha = 0
 
         i = 0  # counter
+        
+        val = {
+            ""
+        }
+        
         while s == 1 and i < 2**j:
             i += 1  # incr here to align with b-tree 1-indexing
             (
@@ -278,21 +283,10 @@ class NoUTurnSampler:
             # update dual averaging vars
             alpha += alpha_prime
             n_alpha += n_alpha_prime
-            # if j == 0:
-                
-            #     return (
-            #         theta_double_star,
-            #         r_double_star,
-            #         theta_prime,
-            #         n,
-            #         s,
-            #         alpha,
-            #         n_alpha,
-            #     )
-
 
             # if j == 0 no u-turns possible and while loop has expired
             # check for u-turn / update reference data used to check for u-turns
+            
             """
             if `i` is odd then it is the left-most leaf node of at least one balanced subtree
             -> overwrite correspoding stale position value in `left_leaf_nodes`
@@ -364,4 +358,8 @@ class NoUTurnSampler:
         return theta_double_star, r_double_star, theta_prime, n, s, alpha, n_alpha
 
 
-    # def _update_left_leaf_nodes(self, theta_double_star, r_double_star, left_leaf_nodes, i, j, s)
+    def _build_tree_while_loop_cond(self):
+        pass
+    
+    def _build_tree_while_loop_body(self):
+        pass
