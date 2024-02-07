@@ -45,7 +45,7 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     
     z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean)/nuts_posterior_std
     assert nuts_posterior_std > 0
-    assert z_val_obvs < 1.96 # running in debugger or by itself this pases at 0.675
+    assert z_val_obvs < 1.66 # running in debugger or by itself this pases at 0.675
 
 
 # if __name__ == "__main__":

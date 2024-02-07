@@ -45,7 +45,7 @@ class PRNGKeySequence:
 @register_pytree_node_class
 class NoUTurnSampler:
     def __init__(self, loglik):
-        # loglik = jax.jit(loglik)
+        
         self.theta_loglik = Partial(jax.jit(loglik))
         self.theta_loglik_grad = Partial(jax.jit(jax.grad(loglik)))
         self.theta_r_loglik = Partial(
@@ -217,7 +217,7 @@ class NoUTurnSampler:
         r_tilde = r_tilde + 0.5 * eps * self.theta_loglik_grad(theta_tilde)
         return theta_tilde, r_tilde
 
-    # @jax.jit #jit here messes up some tests
+    
     def _find_reasonable_epsilon(self, theta):
         ln2 = jnp.log(2)
         dim_theta = theta.shape[0]
@@ -232,42 +232,10 @@ class NoUTurnSampler:
         ln_p = self.theta_r_loglik(theta, r)
         ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
-        alpha = cond(ln_p_prime - ln_p > -ln2, lambda: 1, lambda: -1)
-        # alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
+        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
+        while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
+            eps *= 2.0**alpha
+            theta_prime, r_prime = self._leapfrog(theta, r, eps)
+            ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
-        # while loop parmas
-        val = {
-            "eps": eps,
-            "alpha": alpha,
-            "theta_prime": theta_prime,
-            "r_prime": r_prime,
-            "theta": theta,
-            "r": r,
-            "ln_p": ln_p,
-        }
-        val = while_loop(
-            self._find_reasonable_epsilon_while_loop_cond,
-            self._find_reasonable_epsilon_while_loop_body,
-            val,
-        )
-        eps = val["eps"]
         return eps
-
-    # @jax.jit
-    def _find_reasonable_epsilon_while_loop_body(self, val: Dict):
-        eps, alpha, theta, r = val["eps"], val["alpha"], val["theta"], val["r"]
-        eps *= 2.0**alpha
-        theta_prime, r_prime = self._leapfrog(theta, r, eps)
-        val["eps"], val["theta_prime"], val["r_prime"] = eps, theta_prime, r_prime
-        return val
-
-    # @jax.jit
-    def _find_reasonable_epsilon_while_loop_cond(self, val: Dict):
-        ln2 = jnp.log(2)
-        alpha, theta_prime, r_prime, ln_p = (
-            val["alpha"],
-            val["theta_prime"],
-            val["r_prime"],
-            val["ln_p"],
-        )
-        return alpha * (self.theta_r_loglik(theta_prime, r_prime) - ln_p) > -alpha * ln2
