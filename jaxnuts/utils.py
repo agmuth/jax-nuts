@@ -2,19 +2,19 @@ import jax.numpy as jnp
 from typing import NamedTuple
 
 
-class NutsHyperParams(NamedTuple):
-    delta: float=0.5 * (0.95 + 0.25)
-    gamma: float=0.05
-    kappa: float=0.75
-    t_0: int=10
-    delta_max: int=1_000
+# class NutsHyperParams(NamedTuple):
+#     delta: float=0.5 * (0.95 + 0.25)
+#     gamma: float=0.05
+#     kappa: float=0.75
+#     t_0: int=10
+#     delta_max: int=1_000
     
 
-class NutsLikelihoods(NamedTuple):
-    theta_loglik: callable=None
-    theta_loglik_grad: callable=None
-    theta_r_loglik: callable=None
-    theta_r_lik: callable=None
+# class NutsLikelihoods(NamedTuple):
+#     theta_loglik: callable=None
+#     theta_loglik_grad: callable=None
+#     theta_r_loglik: callable=None
+#     theta_r_lik: callable=None
 
 
 class BuildTreeWhileLoopArgs(NamedTuple):
@@ -47,28 +47,34 @@ class BuildTreeWhileLoopArgs(NamedTuple):
     prng_key: jnp.array = None
         
     
-
-    """Should be subset of `BuildTreeWhileLoopArgs`"""
-    # passed in by call to function
-    theta_star: jnp.array
-    r_star: jnp.array
-    u: float
-    v: int
-    j: int
-    eps: float
-    theta_0: jnp.array
-    r_0: jnp.array
-    
-    # HMC path vars
-    theta_prime = jnp.array
-    s: int
-    n: int
-
-    # dual averaging vars
-    alpha: float
-    n_alpha: int
-
-    # counter
-    i: int
+class SampleWhileLoopArgs(NamedTuple):
+    prng_key: jnp.array=None,
+    theta_plus_minus: jnp.array=None,
+    r_plus_minus: jnp.array=None,
+    theta_prime: jnp.array=None,
+    theta_m: jnp.array=None,
+    n: int = 0,
+    s: int = 0,
+    alpha: float=0,
+    n_alpha: int=0,
+    u: float=0,
+    eps: float=0,
+    theta_m_minus_one: jnp.array=None,
+    r_0: jnp.array=None,
+    j: int=0
         
-    left_leaf_nodes: jnp.array
+    
+class SampleForLoopArgs(NamedTuple):
+    prng_key: jnp.array=None,
+    theta_samples: jnp.array=None,
+    eps_bar: float=None,
+    H_bar: float=None,
+    mu: float=None,
+    M_adapt: int=None,
+    
+    
+class DualAveragingArgs(NamedTuple):
+    eps: float=None,
+       
+        
+    
