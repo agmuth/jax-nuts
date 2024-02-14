@@ -25,7 +25,7 @@ problems = [ProblemInstance(a=3.0, b=2.0, n=10, x_sum=4.0)]
 @pytest.mark.parametrize("problem", problems)
 def test_poisson_process(problem: ProblemInstance):
     cp = PoissonProcess(**problem.dict())
-    nuts = NoUTurnSampler(loglik=cp)
+    nuts = NoUTurnSampler(loglik=cp, dim_theta=1)
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
     M, M_adapt = 2000, 1000

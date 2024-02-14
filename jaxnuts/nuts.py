@@ -17,6 +17,9 @@ class NoUTurnSampler:
     def __init__(
         self,
         loglik,
+        dim_theta,
+        M=2_000,
+        M_adapt=1_000,
         delta=0.5 * (0.95 + 0.25),
         gamma=0.05,
         kappa=0.75,
@@ -33,6 +36,10 @@ class NoUTurnSampler:
             jax.jit(lambda theta, r: jnp.exp(self.theta_r_loglik(theta, r)))
         )
 
+        self.dim_theta = dim_theta # dont think this is worth saving. 
+        self.M = M
+        self.M_adapt = M_adapt 
+        
         self.delta = delta
         self.gamma = gamma
         self.kappa = kappa
@@ -45,6 +52,9 @@ class NoUTurnSampler:
     def tree_flatten(self):
         children = (
             self.theta_loglik,
+            self.dim_theta,
+            self.M,
+            self.M_adapt,
             self.delta,
             self.gamma,
             self.kappa,
