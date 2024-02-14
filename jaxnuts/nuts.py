@@ -3,12 +3,12 @@ import jax.numpy as jnp
 from typing import Union, Tuple, Dict
 import numpy as np
 from jax import lax
-from typing import NamedTuple
+from typing import NamedTuple, Tuple
 
 
 from jax.tree_util import register_pytree_node_class, Partial
 
-from jaxnuts.utils import *
+# from jaxnuts.utils import *
 
 
 
@@ -106,15 +106,15 @@ class NoUTurnSampler:
         return eps, eps_bar, H_bar
     
     @jax.jit
-    def _update_theta_prime(self, cond, prob, theta_star, theta_prime, prng_key):
-        theta_prime = jnp.where(
+    def _accept_or_reject_proposed_theta(self, cond, prob, theta_prop, theta_curr, prng_key):
+        theta_curr = jnp.where(
             (cond>0)
             * (jax.random.uniform(key=prng_key, minval=0, maxval=1)
             < prob),
-            theta_star,
-            theta_prime,
+            theta_prop,
+            theta_curr,
         )
-        return theta_prime
+        return theta_curr
 
     @jax.jit
     def _check_for_u_turn(self, theta_plus, r_plus, theta_minus, r_minus, v):
@@ -206,16 +206,9 @@ class NoUTurnSampler:
                 """ 
                 
                 self.prng_key, subkey = jax.random.split(self.prng_key)
-                theta_m = self._update_theta_prime(s_prime==1, n_prime/n, theta_prime, theta_m, subkey)
+                theta_m = self._accept_or_reject_proposed_theta(s_prime==1, n_prime/n, theta_prime, theta_m, subkey)
                 
-                # if s_prime == 1:  
-                #     self.prng_key, subkey = jax.random.split(self.prng_key)
-                #     # theta_m = self._update_theta_prime(s_prime==1, n_prime/n, theta_prime, theta_m)
-                #     if (
-                #         jax.random.uniform(key=subkey, minval=0, maxval=1)
-                #         < n_prime / n
-                #     ):  # prob of transistion
-                #         theta_m = theta_prime
+                
 
                 theta_delta = theta_plus_minus[1] - theta_plus_minus[0]
                 s *= (
@@ -271,57 +264,17 @@ class NoUTurnSampler:
         left_leaf_nodes = jnp.array(
             [(jnp.zeros(theta_star.shape), jnp.zeros(r_0.shape))] #* max(1, j)  # get around tracing issues when j = 0
         )  # array for storing leftmost leaf nodes in any subtree currently under consideration        
-        val = BuildTreeWhileLoopArgs(
-            # passed in by call to function
-            theta_star=theta_star,
-            r_star=r_star,
-            u=u,
-            v=v,
-            j=j,
-            eps=eps,
-            theta_0=theta_0,
-            r_0=r_0,
-            
-            # HMC path vars
-            theta_prime = theta_star, # placeholder
-            s=1,
-            n=1,
+        # HMC path vars
+        theta_prime = theta_star
+        s = 1
+        n = 1
 
-            # dual averaging vars
-            alpha=0,
-            n_alpha=0,
-            
-            
-            left_leaf_nodes=left_leaf_nodes,
-            
-            # counter
-            i=0,
-                
-            prng_key=prng_key,
-            
-        )
-        
-        val = lax.while_loop(
-            self._build_tree_while_loop_cond,
-            self._build_tree_while_loop_body,
-            val
-        )
-       
-        
-        return (val.theta_star, val.r_star, val.theta_prime, val.n, val.s, val.alpha, val.n_alpha)
+        # dual averaging vars
+        alpha = 0.0
+        n_alpha = 0
 
+        i = 0  # counter
         
-        
-
-    
-    @jax.jit
-    def _build_tree_while_loop_cond(self, val: BuildTreeWhileLoopArgs):
-        # return lax.select(val.s * (val.i < 2**val.j), True, False)
-        return (val.s ==1)* (val.i < 2**val.j)
-    
-    @jax.jit
-    def _build_tree_while_loop_body(self, val: BuildTreeWhileLoopArgs):
-        # unpack val for readability w\ original nuts paper
         (
             theta_star,
             r_star,
@@ -339,24 +292,80 @@ class NoUTurnSampler:
             left_leaf_nodes,
             i,
             prng_key,
-        ) = (
-            val.theta_star,
-            val.r_star,
-            val.u,
-            val.v,
-            val.j,
-            val.eps,
-            val.theta_0,
-            val.r_0,
-            val.s,
-            val.n,
-            val.theta_prime,
-            val.alpha,
-            val.n_alpha,
-            val.left_leaf_nodes,
-            val.i,
-            val.prng_key,
+        ) = lax.while_loop(
+            self._build_tree_while_loop_cond,
+            self._build_tree_while_loop_body,
+            (
+                theta_star,
+                r_star,
+                u,
+                v,
+                j,
+                eps,
+                theta_0,
+                r_0,
+                s,
+                n,
+                theta_prime,
+                alpha,
+                n_alpha,
+                left_leaf_nodes,
+                i,
+                prng_key,
+            )
         )
+       
+        
+        return (theta_star, r_star, theta_prime, n, s, alpha, n_alpha)
+
+        
+        
+
+    
+    @jax.jit
+    def _build_tree_while_loop_cond(self, val: Tuple):
+        (
+            _,
+            _,
+            _,
+            _,
+            j,
+            _,
+            _,
+            _,
+            s,
+            _,
+            _,
+            _,
+            _,
+            _,
+            i,
+            _,  
+        ) = val
+        
+        return (s==1)*(i < 2**j)
+    
+    @jax.jit
+    def _build_tree_while_loop_body(self, val: Tuple):
+        (
+            theta_star,
+            r_star,
+            u,
+            v,
+            j,
+            eps,
+            theta_0,
+            r_0,
+            s,
+            n,
+            theta_prime,
+            alpha,
+            n_alpha,
+            left_leaf_nodes,
+            i,
+            prng_key,  
+        ) = val
+        
         
         i += 1  # incr here to align with b-tree 1-indexing
         (
@@ -380,7 +389,7 @@ class NoUTurnSampler:
 
        
         prng_key, subkey = jax.random.split(prng_key)
-        theta_prime = self._update_theta_prime(n_prime, 1/n, theta_star, theta_double_star, subkey)
+        theta_prime = self._accept_or_reject_proposed_theta(n_prime, 1/n, theta_double_star, theta_star, subkey)
         
         left_leaf_nodes = lax.cond(
             (j>0)*(i%2==1),
@@ -396,34 +405,34 @@ class NoUTurnSampler:
             left_leaf_nodes, theta_double_star, r_double_star, s, v, i, j
         )
         
-        # update val
-        val = val._replace(
-            theta_star=theta_double_star,
-            r_star=r_double_star,
-            theta_prime = theta_prime, # placeholder
-            s=s,
-            n=n,
-            # dual averaging vars
-            alpha=alpha,
-            n_alpha=n_alpha,
-            
-            
-            left_leaf_nodes=left_leaf_nodes,
-            
-            # counter
-            i=i,
-                
-            prng_key=prng_key,
+        theta_star=theta_double_star
+        r_star=r_double_star
+        
+        
+        
+        return (
+            theta_star,
+            r_star,
+            u,
+            v,
+            j,
+            eps,
+            theta_0,
+            r_0,
+            s,
+            n,
+            theta_prime,
+            alpha,
+            n_alpha,
+            left_leaf_nodes,
+            i,
+            prng_key,
         )
-        
-        
-        
-        return val
                                 
         
         
     @jax.jit
-    def _handle_left_leaf_node_case(self, left_leaf_nodes, theta_star, r_star, i, j):
+    def _handle_left_leaf_node_case(self, left_leaf_nodes: jnp.array, theta_star: jnp.array, r_star: jnp.array, i: int, j: int) -> jnp.array:
         """
         if `i` is odd then it is the left-most leaf node of at least one balanced subtree
         -> overwrite correspoding stale position value in `left_leaf_nodes`
@@ -454,7 +463,7 @@ class NoUTurnSampler:
         return left_leaf_nodes
     
     @jax.jit
-    def _handle_right_leaf_node_case(self, left_leaf_nodes, theta_star, r_star, s, v, i, j):
+    def _handle_right_leaf_node_case(self, left_leaf_nodes: jnp.array, theta_star: jnp.array, r_star: jnp.array, s: int, v: int, i: int, j: int) -> int:
         """
         if `i` is even then it is the right-most leaf node of at least one balanced subtree
         -> check for u-turn

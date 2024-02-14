@@ -1,36 +1,36 @@
-# # https://github.com/google/jax/issues/446
-# from collections import namedtuple
-# from jax.tree_util import register_pytree_node
-# from jax import grad, jit
-# import jax.numpy as np
-# from jax import lax
+# https://github.com/google/jax/issues/446
+from collections import namedtuple
+from jax.tree_util import register_pytree_node
+from jax import grad, jit
+import jax.numpy as np
+from jax import lax
 from typing import NamedTuple
 
-# class Point2d(NamedTuple):
-#     x: float
-#     y: float
+class Point2d(NamedTuple):
+    x: float
+    y: float
     
     
-# class Point3d(NamedTuple):
-#     x: float
-#     y: float
-#     z: float
-# # Point2d = namedtuple("Point2d", ["x", "y"])
+class Point3d(NamedTuple):
+    x: float
+    y: float
+    z: float
+# Point2d = namedtuple("Point2d", ["x", "y"])
 
-# # register_pytree_node(
-# #     Point2d,
-# #     lambda xs: (tuple(xs), None),  # tell JAX how to unpack to an iterable
-# #     lambda _, xs: Point2d(*xs)       # tell JAX how to pack back into a Point2d
-# # )
+# register_pytree_node(
+#     Point2d,
+#     lambda xs: (tuple(xs), None),  # tell JAX how to unpack to an iterable
+#     lambda _, xs: Point2d(*xs)       # tell JAX how to pack back into a Point2d
+# )
 
-# # pt3d = Point3d(1, 2, 3)
-# # pt2d = Point2d(**pt3d._asdict())  # doesn't work 
+# pt3d = Point3d(1, 2, 3)
+# pt2d = Point2d(**pt3d._asdict())  # doesn't work 
 
-# def f(pt):
-#     pt = pt._replace(x=pt.y, y=pt.x)
-#     return np.sqrt(pt.x**2 + pt.y**2)
+def f(pt):
+    pt = pt._replace(x=pt.y, y=pt.x)
+    return np.sqrt(pt.x**2 + pt.y**2)
 
-# pt = Point2d(1., 2.)
+pt = Point2d(1., 2.)
 
 # print(f(pt))      # 2.236068
 # print(grad(f)(pt))  # Point2d(x=..., y=...)
@@ -39,15 +39,15 @@ from typing import NamedTuple
 # print(g(pt))  # 2.236068
 
 
-# def cond_fun(pt):
-#     return pt.x < 10
+def cond_fun(pt):
+    return pt.x < 10
 
-# def body_fun(pt):
-#     return pt._replace(x=pt.x+pt.y)
+def body_fun(pt):
+    return pt._replace(x=pt.x+pt.y)
 
-# pt = Point2d(1, 1)
-# pt = lax.while_loop(cond_fun, body_fun, pt)
-# print(pt)
+pt = Point2d(1, 1)
+pt = lax.while_loop(cond_fun, body_fun, pt)
+print(pt)
 
 
 
@@ -69,56 +69,3 @@ from typing import NamedTuple
 # x = X()
 # print(x.while_fun(1, 1))
 
-import jax
-import jax.numpy as jnp
-from typing import Union, Tuple, Dict
-import numpy as np
-from jax import lax
-from typing import NamedTuple
-
-
-from jax.tree_util import register_pytree_node_class, Partial
-
-from jaxnuts.utils import (
-    BuildTreeWhileLoopArgs
-
-)
-
-# @register_pytree_node_class
-# class PRNGKeySequence:
-#     # def __init__(self, seed: int) -> None:
-#     #     self.key = jax.random.PRNGKey(seed=seed)
-#     def __init__(self, key: jax.random.PRNGKey) -> None:
-#         self.key = key
-    
-#     @jax.jit
-#     def split_key(self):
-#         # self.key, subkey = jax.random.split(self.key)
-#         subkey, self.key = jax.random.split(self.key)
-#         return subkey
-
-#     def tree_flatten(self):
-#         # _, self.key = jax.random.split(self.key)
-#         children = (self.key,)
-#         aux_data = None
-#         return (children, aux_data)
-
-#     @classmethod
-#     def tree_unflatten(cls, aux_data, children):
-#         return cls(*children)
-    
-    
-# # @register_pytree_node_class
-# class PRNGKeySequence(NamedTuple):
-#     key: jax.random.PRNGKey
-    
-#     # @jax.jit
-#     def split_key(self):
-#         # self.key, subkey = jax.random.split(self.key)
-#         subkey, key = jax.random.split(self.key)
-        
-#         return subkey, 
-    
-# key = PRNGKeySequence(jax.random.PRNGKey(1234))
-# for _ in range(10):
-#     print(key.split_key())
