@@ -224,12 +224,21 @@ class NoUTurnSampler:
                 n += n_prime
                 j += 1
 
+            # TODO: comment out in favour of jax'd code below
             if m < self.M_adapt:  # adapt accpetance params
                 eps, eps_bar, H_bar = self._dual_average(
                     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
                 )
             else:
                 eps = eps_bar
+                
+            # # this works but is slow atm -> comment out
+            # eps, eps_bar, H_bar = lax.cond(
+            #     m < self.M_adapt,
+            #     self._dual_average,
+            #     lambda *args: (eps_bar, eps_bar, H_bar),
+            #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
+            # )
 
             theta_samples = theta_samples.at[m].set(theta_m)
 
