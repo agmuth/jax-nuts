@@ -10,32 +10,35 @@ from jax.tree_util import register_pytree_node_class, Partial
 
 
 def lax_scan(f, init, xs, length=None):
-  if xs is None:
-    xs = [None] * length
-  carry = init
-  ys = []
-  for x in xs:
-    carry, y = f(carry, x)
-    ys.append(y)
-  return carry, np.stack(ys)
+    if xs is None:
+        xs = [None] * length
+    carry = init
+    ys = []
+    for x in xs:
+        carry, y = f(carry, x)
+        ys.append(y)
+    return carry, np.stack(ys)
+
 
 def lax_while_loop(cond_fun, body_fun, init_val):
-  val = init_val
-  while cond_fun(val):
-    val = body_fun(val)
-  return val
+    val = init_val
+    while cond_fun(val):
+        val = body_fun(val)
+    return val
+
 
 def lax_fori_loop(lower, upper, body_fun, init_val):
-  val = init_val
-  for i in range(lower, upper):
-    val = body_fun(i, val)
-  return val
+    val = init_val
+    for i in range(lower, upper):
+        val = body_fun(i, val)
+    return val
+
 
 def lax_cond(pred, true_fun, false_fun, *operands):
-  if pred:
-    return true_fun(*operands)
-  else:
-    return false_fun(*operands)
+    if pred:
+        return true_fun(*operands)
+    else:
+        return false_fun(*operands)
 
 
 class DoubleTreeState(NamedTuple):
@@ -192,7 +195,7 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
         _sample_posterior_scan_f_while_loop_body_fun,
         init_val,
     )
-    
+
     (
         double_tree_state,
         loglik_funcs,
@@ -208,12 +211,16 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
         m < dual_average_params.M_adapt,
         _dual_average,
         lambda *args: dual_average_state,
-        dual_average_state, dual_average_params, alpha, n_alpha, m
+        dual_average_state,
+        dual_average_params,
+        alpha,
+        n_alpha,
+        m,
     )
-    
+
     if m > dual_average_params.M_adapt:
         print()
-    
+
     carry = (
         theta_m,  # passed in as theta_{m-1} # maybe change name to theta_0
         loglik_funcs,
@@ -222,7 +229,7 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
         prng_key,
     )
 
-    return  carry, theta_m
+    return carry, theta_m
 
 
 def _sample_posterior_scan_f_while_loop_cond_fun(val: Tuple):
@@ -235,13 +242,11 @@ def _sample_posterior_scan_f_while_loop_body_fun(val: Tuple):
     (double_tree_state, loglik_funcs, theta_m, n, alpha, n_alpha, prng_key) = val
 
     (
-        prng_key, 
+        prng_key,
         subkey1,
         subkey2,
         subkey3,
-    ) = jax.random.split(
-        prng_key, 4
-    )  
+    ) = jax.random.split(prng_key, 4)
 
     # choose direction + double tree
     v_j = 2 * jax.random.bernoulli(subkey1).astype(jnp.int32) - 1
@@ -400,18 +405,19 @@ def _double_tree_while_loop_body(val: Tuple):
         (double_tree_state.j > 0) * (double_tree_state.i % 2 == 1),
         _handle_left_leaf_node_case,
         lambda left_leaf_nodes, double_tree_state: (left_leaf_nodes, double_tree_state),
-        left_leaf_nodes, double_tree_state,
+        left_leaf_nodes,
+        double_tree_state,
     )
 
     left_leaf_nodes, double_tree_state = lax_cond(
         (double_tree_state.j > 0) * (double_tree_state.i % 2 == 0),
         _handle_right_leaf_node_case,
         lambda left_leaf_nodes, double_tree_state: (left_leaf_nodes, double_tree_state),
-        left_leaf_nodes, double_tree_state,
+        left_leaf_nodes,
+        double_tree_state,
     )
 
     return (double_tree_state, loglik_funcs, alpha, n_alpha, left_leaf_nodes, prng_key)
-
 
 
 def _handle_left_leaf_node_case(left_leaf_nodes, double_tree_state) -> jnp.array:
@@ -428,7 +434,7 @@ def _handle_left_leaf_node_case(left_leaf_nodes, double_tree_state) -> jnp.array
     state used `l` times we will have already made `l` u-turn checks against the previous
     `l` times state)
     """
-    
+
     idx_star = (double_tree_state.v + 1) // 2
     idx = lax_fori_loop(
         1,
@@ -456,7 +462,7 @@ def _handle_right_leaf_node_case(left_leaf_nodes, double_tree_state):
     we can range from k from 1 to j to get which subtrees the current
     state is a right most leaf node of
     """
-    
+
     idx_star = (double_tree_state.v + 1) // 2
     s = lax_fori_loop(
         1,
@@ -525,7 +531,6 @@ def _check_for_u_turn(theta_plus, r_plus, theta_minus, r_minus, v):  # no state 
     return (jnp.dot(theta_delta, r_plus) >= 0) * (jnp.dot(theta_delta, r_minus) >= 0)
 
 
-
 def _dual_average(
     state: DualAverageState, params: DualAveragePrams, alpha, n_alpha, m
 ) -> DualAverageState:
@@ -535,7 +540,9 @@ def _dual_average(
 
     # split out updates to avoid having to save vectors
 
-    H_bar = (1-1/(m + params.t_0))*H_bar +  (params.delta - alpha/n_alpha) / (m + params.t_0)
+    H_bar = (1 - 1 / (m + params.t_0)) * H_bar + (params.delta - alpha / n_alpha) / (
+        m + params.t_0
+    )
 
     # on log scale
     eps = params.mu - jnp.sqrt(m) / params.gamma * H_bar
@@ -589,4 +596,3 @@ def _leapfrog(theta, r, eps, theta_loglik_grad):  # no state needed
     theta_tilde = theta + eps * r_tilde
     r_tilde = r_tilde + 0.5 * eps * theta_loglik_grad(theta_tilde)
     return theta_tilde, r_tilde
-
