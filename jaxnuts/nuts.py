@@ -78,16 +78,10 @@ class NoUTurnSampler:
     
     
     def _find_reasonable_epsilon(self, theta, prng_key):
+        # not worth jitting
         ln2 = jnp.log(2)
-        dim_theta = theta.shape[0]
         eps = 1.0
-        # TODO: cahnge to call get momentum func
-        r = jax.random.multivariate_normal(
-            key=prng_key,
-            mean=jnp.zeros(dim_theta),
-            cov=jnp.eye(dim_theta),
-        )
-
+        r = self._draw_momentum_vector(theta, prng_key)
         theta_prime, r_prime = self._leapfrog(theta, r, eps)
         ln_p = self.theta_r_loglik(theta, r)
         ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
@@ -104,7 +98,7 @@ class NoUTurnSampler:
     def _dual_average(self, eps, eps_bar, H_bar, mu, alpha, n_alpha, m):
         # split out updates to avoid having to save vectors
         H_bar *= 1 - 1 / (m + self.t_0)
-        H_bar += +(self.delta - alpha / n_alpha) / (m + self.t_0)
+        H_bar += (self.delta - alpha / n_alpha) / (m + self.t_0)
 
         # on log scale
         eps = mu - jnp.sqrt(m) / self.gamma * H_bar
@@ -136,7 +130,8 @@ class NoUTurnSampler:
             jnp.dot(theta_delta, r_minus) >= 0
         )
         
-    def _draw_momentum_vector(self, dim, prng_key):
+    def _draw_momentum_vector(self, theta, prng_key):
+        dim = theta.shape[0]
         r = jax.random.multivariate_normal(
             key=prng_key,
             mean=jnp.zeros(dim),
@@ -170,7 +165,7 @@ class NoUTurnSampler:
             self.prng_key, subkey1, subkey2 = jax.random.split(self.prng_key, 3)
             
             theta_m = theta_samples[m - 1]
-            r_0 = self._draw_momentum_vector(dim_theta, subkey1)
+            r_0 = self._draw_momentum_vector(theta_m, subkey1)
             
             u = jax.random.uniform(
                 key=subkey2, minval=0, maxval=self.theta_r_lik(theta_m, r_0)

@@ -2,7 +2,7 @@
 from collections import namedtuple
 from jax.tree_util import register_pytree_node
 from jax import grad, jit
-import jax.numpy as np
+import jax.numpy as jnp
 from jax import lax
 from typing import NamedTuple
 
@@ -26,28 +26,28 @@ class Point3d(NamedTuple):
 # pt3d = Point3d(1, 2, 3)
 # pt2d = Point2d(**pt3d._asdict())  # doesn't work 
 
-def f(pt):
-    pt = pt._replace(x=pt.y, y=pt.x)
-    return np.sqrt(pt.x**2 + pt.y**2)
+# def f(pt):
+#     pt = pt._replace(x=pt.y, y=pt.x)
+#     return np.sqrt(pt.x**2 + pt.y**2)
 
-pt = Point2d(1., 2.)
+# pt = Point2d(1., 2.)
 
-# print(f(pt))      # 2.236068
-# print(grad(f)(pt))  # Point2d(x=..., y=...)
+# # print(f(pt))      # 2.236068
+# # print(grad(f)(pt))  # Point2d(x=..., y=...)
 
-# g = jit(f)
-# print(g(pt))  # 2.236068
+# # g = jit(f)
+# # print(g(pt))  # 2.236068
 
 
-def cond_fun(pt):
-    return pt.x < 10
+# def cond_fun(pt):
+#     return pt.x < 10
 
-def body_fun(pt):
-    return pt._replace(x=pt.x+pt.y)
+# def body_fun(pt):
+#     return pt._replace(x=pt.x+pt.y)
 
-pt = Point2d(1, 1)
-pt = lax.while_loop(cond_fun, body_fun, pt)
-print(pt)
+# pt = Point2d(1, 1)
+# pt = lax.while_loop(cond_fun, body_fun, pt)
+# print(pt)
 
 
 
@@ -69,3 +69,13 @@ print(pt)
 # x = X()
 # print(x.while_fun(1, 1))
 
+def f(carry, x):
+    return 2*carry, jnp.array([1, 2])
+
+init = 1
+xs = None
+length = 10
+
+carry, ys = lax.scan(f, init, xs, length)
+print(carry)
+print(ys)
