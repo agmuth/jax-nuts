@@ -82,7 +82,7 @@ class NoUTurnSampler:
         ln_p = self.theta_r_loglik(theta, r)
         ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
-        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1
+        alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1  # lax.cond
         while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
             eps *= 2.0**alpha
             theta_prime, r_prime = self._leapfrog(theta, r, eps)
@@ -134,99 +134,6 @@ class NoUTurnSampler:
             cov=jnp.eye(dim),
         )
         return r
-
-    # def __call__(
-    #     self,
-
-    # ):
-    #     self.prng_key, subkey = jax.random.split(self.prng_key)
-    #     eps = self._find_reasonable_epsilon(theta=self.theta_0, prng_key=subkey)
-    #     eps_bar = 1.0
-    #     H_bar = 0.0
-    #     mu = jnp.log(10 * eps)
-
-    #     # dim_theta = theta_0.shape[0]
-    #     dim_theta = self.theta_0.shape[0]
-    #     theta_samples = jnp.empty((self.M + 1, dim_theta))
-    #     theta_samples = theta_samples.at[0].set(self.theta_0)
-
-    #     for m in range(1, self.M + 1):
-    #         # this needs to be `f`
-    #         # need to define `carry` /state to f
-    #         # x can be none or `m`
-    #         self.prng_key, subkey1, subkey2 = jax.random.split(self.prng_key, 3)
-
-    #         theta_m = theta_samples[m - 1]
-    #         r_0 = self._draw_momentum_vector(theta_m, subkey1)
-
-    #         u = jax.random.uniform(
-    #             key=subkey2, minval=0, maxval=self.theta_r_lik(theta_m, r_0)
-    #         )
-
-    #         # initialize vars
-    #         theta_m_minus_one = theta_samples[m - 1]
-    #         theta_plus_minus = jnp.array([theta_samples[m - 1], theta_samples[m - 1]])
-    #         r_plus_minus = jnp.array([r_0, r_0])
-
-    #         j = 0
-    #         s = 1
-    #         n = 1
-
-    #         while s == 1:
-    #             self.prng_key, subkey = jax.random.split(self.prng_key)
-    #             idx_star = jax.random.bernoulli(subkey).astype(jnp.int32)
-    #             v_j = 2 * idx_star - 1
-    #             theta_star = theta_plus_minus[idx_star]
-    #             r_star = r_plus_minus[idx_star]
-
-    #             self.prng_key, subkey = jax.random.split(self.prng_key)
-
-    #             (
-    #                 theta_star,
-    #                 r_star,
-    #                 theta_prime,
-    #                 n_prime,
-    #                 s_prime,
-    #                 alpha,
-    #                 n_alpha,
-    #             ) = self._build_tree_while_loop(
-    #                 theta_star, r_star, u, v_j, j, eps, theta_m_minus_one, r_0, subkey
-    #             )
-
-    #             theta_plus_minus = theta_plus_minus.at[idx_star].set(theta_star)
-    #             r_plus_minus = r_plus_minus.at[idx_star].set(r_star)
-
-    #             self.prng_key, subkey = jax.random.split(self.prng_key)
-    #             theta_m = self._accept_or_reject_proposed_theta(s_prime==1, n_prime/n, theta_prime, theta_m, subkey)
-
-    #             theta_delta = theta_plus_minus[1] - theta_plus_minus[0]
-    #             s *= (
-    #                 s_prime
-    #                 * (jnp.dot(theta_delta, r_plus_minus[0]) >= 0)
-    #                 * (jnp.dot(theta_delta, r_plus_minus[1]) >= 0)
-    #             )
-    #             n += n_prime
-    #             j += 1
-
-    #         # TODO: comment out in favour of jax'd code below
-    #         if m < self.M_adapt:  # adapt accpetance params
-    #             eps, eps_bar, H_bar = self._dual_average(
-    #                 eps, eps_bar, H_bar, mu, alpha, n_alpha, m
-    #             )
-    #         else:
-    #             eps = eps_bar
-
-    #         # # this works but is slow atm -> comment out
-    #         # eps, eps_bar, H_bar = lax.cond(
-    #         #     m < self.M_adapt,
-    #         #     self._dual_average,
-    #         #     lambda *args: (eps_bar, eps_bar, H_bar),
-    #         #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
-    #         # )
-
-    #         theta_samples = theta_samples.at[m].set(theta_m)
-
-    #     return theta_samples
 
     def __call__(
         self,
