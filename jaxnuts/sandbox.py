@@ -5,16 +5,20 @@ from jax import grad, jit
 import jax.numpy as jnp
 from jax import lax
 from typing import NamedTuple
+import jax
+
 
 class Point2d(NamedTuple):
     x: float
     y: float
-    
-    
+
+
 class Point3d(NamedTuple):
     x: float
     y: float
     z: float
+
+
 # Point2d = namedtuple("Point2d", ["x", "y"])
 
 # register_pytree_node(
@@ -24,7 +28,7 @@ class Point3d(NamedTuple):
 # )
 
 # pt3d = Point3d(1, 2, 3)
-# pt2d = Point2d(**pt3d._asdict())  # doesn't work 
+# pt2d = Point2d(**pt3d._asdict())  # doesn't work
 
 # def f(pt):
 #     pt = pt._replace(x=pt.y, y=pt.x)
@@ -50,32 +54,45 @@ class Point3d(NamedTuple):
 # print(pt)
 
 
-
 # class X:
-    
+
 #     def cond_fun(self, pt):
 #         return pt.x < 10
 
 #     def body_fun(self, pt):
 #         return pt._replace(x=pt.x+pt.y)
-    
+
 
 #     def while_fun(self, x, y):
 #         pt = Point2d(x, y)
 #         pt = lax.while_loop(self.cond_fun, self.body_fun, pt)
 #         return pt
-    
-    
+
+
 # x = X()
 # print(x.while_fun(1, 1))
 
-def f(carry, x):
-    return 2*carry, jnp.array([1, 2])
 
-init = 1
+def f(carry, *args):
+    i = 0
+    while i < 1:
+        i += 1
+    key, pos = carry
+    key, subkey = jax.random.split(key)
+    coords = jax.random.uniform(subkey, (2,), minval=0, maxval=1)
+    pos += coords
+    carry = (key, pos)
+    return carry, coords
+
+
+key = jax.random.PRNGKey(1234)
+pos = jnp.zeros((2,))
+
+init = (key, pos)
 xs = None
 length = 10
 
 carry, ys = lax.scan(f, init, xs, length)
 print(carry)
 print(ys)
+print(ys.sum(axis=0) == carry[1])

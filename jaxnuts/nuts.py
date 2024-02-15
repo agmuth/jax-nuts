@@ -11,15 +11,14 @@ from jax.tree_util import register_pytree_node_class, Partial
 # from jaxnuts.utils import *
 
 
-
 @register_pytree_node_class
 class NoUTurnSampler:
     def __init__(
         self,
         loglik,
         theta_0,
-        M=2_000,
-        M_adapt=1_000,
+        M=20,
+        M_adapt=10,
         delta=0.5 * (0.95 + 0.25),
         gamma=0.05,
         kappa=0.75,
@@ -38,16 +37,14 @@ class NoUTurnSampler:
 
         self.theta_0 = theta_0
         self.M = M
-        self.M_adapt = M_adapt 
-        
+        self.M_adapt = M_adapt
+
         self.delta = delta
         self.gamma = gamma
         self.kappa = kappa
         self.t_0 = t_0
         self.delta_max = delta_max
         self.prng_key = prng_key
-
-        
 
     def tree_flatten(self):
         children = (
@@ -68,15 +65,14 @@ class NoUTurnSampler:
     @classmethod
     def tree_unflatten(cls, aux_data, children):
         return cls(*children)
-    
+
     @jax.jit
     def _leapfrog(self, theta, r, eps):
         r_tilde = r + 0.5 * eps * self.theta_loglik_grad(theta)
         theta_tilde = theta + eps * r_tilde
         r_tilde = r_tilde + 0.5 * eps * self.theta_loglik_grad(theta_tilde)
         return theta_tilde, r_tilde
-    
-    
+
     def _find_reasonable_epsilon(self, theta, prng_key):
         # not worth jitting
         ln2 = jnp.log(2)
@@ -93,7 +89,7 @@ class NoUTurnSampler:
             ln_p_prime = self.theta_r_loglik(theta_prime, r_prime)
 
         return eps
-    
+
     @jax.jit
     def _dual_average(self, eps, eps_bar, H_bar, mu, alpha, n_alpha, m):
         # split out updates to avoid having to save vectors
@@ -109,13 +105,13 @@ class NoUTurnSampler:
         eps_bar = jnp.exp(eps_bar)
 
         return eps, eps_bar, H_bar
-    
+
     @jax.jit
-    def _accept_or_reject_proposed_theta(self, cond, prob, theta_prop, theta_curr, prng_key):
+    def _accept_or_reject_proposed_theta(
+        self, cond, prob, theta_prop, theta_curr, prng_key
+    ):
         theta_curr = jnp.where(
-            (cond>0)
-            * (jax.random.uniform(key=prng_key, minval=0, maxval=1)
-            < prob),
+            (cond > 0) * (jax.random.uniform(key=prng_key, minval=0, maxval=1) < prob),
             theta_prop,
             theta_curr,
         )
@@ -129,7 +125,7 @@ class NoUTurnSampler:
         return (jnp.dot(theta_delta, r_plus) >= 0) * (
             jnp.dot(theta_delta, r_minus) >= 0
         )
-        
+
     def _draw_momentum_vector(self, theta, prng_key):
         dim = theta.shape[0]
         r = jax.random.multivariate_normal(
@@ -139,116 +135,300 @@ class NoUTurnSampler:
         )
         return r
 
+    # def __call__(
+    #     self,
+
+    # ):
+    #     self.prng_key, subkey = jax.random.split(self.prng_key)
+    #     eps = self._find_reasonable_epsilon(theta=self.theta_0, prng_key=subkey)
+    #     eps_bar = 1.0
+    #     H_bar = 0.0
+    #     mu = jnp.log(10 * eps)
+
+    #     # dim_theta = theta_0.shape[0]
+    #     dim_theta = self.theta_0.shape[0]
+    #     theta_samples = jnp.empty((self.M + 1, dim_theta))
+    #     theta_samples = theta_samples.at[0].set(self.theta_0)
+
+    #     for m in range(1, self.M + 1):
+    #         # this needs to be `f`
+    #         # need to define `carry` /state to f
+    #         # x can be none or `m`
+    #         self.prng_key, subkey1, subkey2 = jax.random.split(self.prng_key, 3)
+
+    #         theta_m = theta_samples[m - 1]
+    #         r_0 = self._draw_momentum_vector(theta_m, subkey1)
+
+    #         u = jax.random.uniform(
+    #             key=subkey2, minval=0, maxval=self.theta_r_lik(theta_m, r_0)
+    #         )
+
+    #         # initialize vars
+    #         theta_m_minus_one = theta_samples[m - 1]
+    #         theta_plus_minus = jnp.array([theta_samples[m - 1], theta_samples[m - 1]])
+    #         r_plus_minus = jnp.array([r_0, r_0])
+
+    #         j = 0
+    #         s = 1
+    #         n = 1
+
+    #         while s == 1:
+    #             self.prng_key, subkey = jax.random.split(self.prng_key)
+    #             idx_star = jax.random.bernoulli(subkey).astype(jnp.int32)
+    #             v_j = 2 * idx_star - 1
+    #             theta_star = theta_plus_minus[idx_star]
+    #             r_star = r_plus_minus[idx_star]
+
+    #             self.prng_key, subkey = jax.random.split(self.prng_key)
+
+    #             (
+    #                 theta_star,
+    #                 r_star,
+    #                 theta_prime,
+    #                 n_prime,
+    #                 s_prime,
+    #                 alpha,
+    #                 n_alpha,
+    #             ) = self._build_tree_while_loop(
+    #                 theta_star, r_star, u, v_j, j, eps, theta_m_minus_one, r_0, subkey
+    #             )
+
+    #             theta_plus_minus = theta_plus_minus.at[idx_star].set(theta_star)
+    #             r_plus_minus = r_plus_minus.at[idx_star].set(r_star)
+
+    #             self.prng_key, subkey = jax.random.split(self.prng_key)
+    #             theta_m = self._accept_or_reject_proposed_theta(s_prime==1, n_prime/n, theta_prime, theta_m, subkey)
+
+    #             theta_delta = theta_plus_minus[1] - theta_plus_minus[0]
+    #             s *= (
+    #                 s_prime
+    #                 * (jnp.dot(theta_delta, r_plus_minus[0]) >= 0)
+    #                 * (jnp.dot(theta_delta, r_plus_minus[1]) >= 0)
+    #             )
+    #             n += n_prime
+    #             j += 1
+
+    #         # TODO: comment out in favour of jax'd code below
+    #         if m < self.M_adapt:  # adapt accpetance params
+    #             eps, eps_bar, H_bar = self._dual_average(
+    #                 eps, eps_bar, H_bar, mu, alpha, n_alpha, m
+    #             )
+    #         else:
+    #             eps = eps_bar
+
+    #         # # this works but is slow atm -> comment out
+    #         # eps, eps_bar, H_bar = lax.cond(
+    #         #     m < self.M_adapt,
+    #         #     self._dual_average,
+    #         #     lambda *args: (eps_bar, eps_bar, H_bar),
+    #         #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
+    #         # )
+
+    #         theta_samples = theta_samples.at[m].set(theta_m)
+
+    #     return theta_samples
+
     def __call__(
         self,
-        
     ):
-        self.prng_key, subkey = jax.random.split(self.prng_key)
-        eps = self._find_reasonable_epsilon(theta=self.theta_0, prng_key=subkey)
+        self.prng_key, subkey1, subkey2 = jax.random.split(self.prng_key, 3)
+        eps = self._find_reasonable_epsilon(theta=self.theta_0, prng_key=subkey1)
         eps_bar = 1.0
         H_bar = 0.0
         mu = jnp.log(10 * eps)
 
-        # dim_theta = theta_0.shape[0]
-        dim_theta = self.theta_0.shape[0]
-        theta_samples = jnp.empty((self.M + 1, dim_theta))
-        theta_samples = theta_samples.at[0].set(self.theta_0)
+        init = (
+            subkey2,
+            self.theta_0,
+            eps,
+            eps_bar,
+            H_bar,
+            mu,
         
-        """
-        TODO:
-        split for loop into adapt and sample phase 
-        -> avoid if statement at end of loop
-        """
-        
-        
-        for m in range(1, self.M + 1):  
-            self.prng_key, subkey1, subkey2 = jax.random.split(self.prng_key, 3)
-            
-            theta_m = theta_samples[m - 1]
-            r_0 = self._draw_momentum_vector(theta_m, subkey1)
-            
-            u = jax.random.uniform(
-                key=subkey2, minval=0, maxval=self.theta_r_lik(theta_m, r_0)
-            )
-
-            # initialize vars
-            theta_m_minus_one = theta_samples[m - 1]
-            theta_plus_minus = jnp.array([theta_samples[m - 1], theta_samples[m - 1]])
-            r_plus_minus = jnp.array([r_0, r_0])
-
-            j = 0
-            s = 1
-            n = 1
-
-            while s == 1:
-                self.prng_key, subkey = jax.random.split(self.prng_key)
-                idx_star = jax.random.bernoulli(subkey).astype(jnp.int32)
-                v_j = 2 * idx_star - 1
-                theta_star = theta_plus_minus[idx_star]
-                r_star = r_plus_minus[idx_star]
-                
-                self.prng_key, subkey = jax.random.split(self.prng_key)
-
-                (
-                    theta_star,
-                    r_star,
-                    theta_prime,
-                    n_prime,
-                    s_prime,
-                    alpha,
-                    n_alpha,
-                ) = self._build_tree_while_loop(
-                    theta_star, r_star, u, v_j, j, eps, theta_m_minus_one, r_0, subkey
-                )
-
-                theta_plus_minus = theta_plus_minus.at[idx_star].set(theta_star)
-                r_plus_minus = r_plus_minus.at[idx_star].set(r_star)
-
-                """
-                TODO: func to move from curr val to proposed val
-                accept_proposed_theta(lax.cond: bool, prob: float, curr_theta, proposed_theta):
-                    return jnp.where(lax.cond * unif < prob, p_theta, c_theta)
-                """ 
-                
-                self.prng_key, subkey = jax.random.split(self.prng_key)
-                theta_m = self._accept_or_reject_proposed_theta(s_prime==1, n_prime/n, theta_prime, theta_m, subkey)
-                
-                
-
-                theta_delta = theta_plus_minus[1] - theta_plus_minus[0]
-                s *= (
-                    s_prime
-                    * (jnp.dot(theta_delta, r_plus_minus[0]) >= 0)
-                    * (jnp.dot(theta_delta, r_plus_minus[1]) >= 0)
-                )
-                n += n_prime
-                j += 1
-
-            # TODO: comment out in favour of jax'd code below
-            if m < self.M_adapt:  # adapt accpetance params
-                eps, eps_bar, H_bar = self._dual_average(
-                    eps, eps_bar, H_bar, mu, alpha, n_alpha, m
-                )
-            else:
-                eps = eps_bar
-                
-            # # this works but is slow atm -> comment out
-            # eps, eps_bar, H_bar = lax.cond(
-            #     m < self.M_adapt,
-            #     self._dual_average,
-            #     lambda *args: (eps_bar, eps_bar, H_bar),
-            #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
-            # )
-
-            theta_samples = theta_samples.at[m].set(theta_m)
+        )
+        _, theta_samples = lax.scan(
+            self._sample_scan_f,
+            init,
+            jnp.arange(1, self.M + 1),
+        )
 
         return theta_samples
 
-    
+    def _sample_scan_f(self, carry, m):
+        # unpack carry
+        (
+            prng_key,
+            theta_m,  # actuall passed in as theta_ m-1
+            eps,
+            eps_bar,
+            H_bar,
+            mu,
+  
+        ) = carry
 
-    
+        # this needs to be `f`
+        # need to define `carry` /state to f
+        # x can be none or `m`
+        prng_key, subkey1, subkey2 = jax.random.split(prng_key, 3)
 
-    
+        r_0 = self._draw_momentum_vector(theta_m, subkey1)
+
+        u = jax.random.uniform(
+            key=subkey2, minval=0, maxval=self.theta_r_lik(theta_m, r_0)
+        )
+
+        # initialize vars
+        theta_plus_minus = jnp.array([theta_m, theta_m])
+        r_plus_minus = jnp.array([r_0, r_0])
+
+        j = 0
+        s = 1
+        n = 1
+        alpha = 0
+        n_alpha = 0
+        val = (
+            prng_key,
+            theta_m,
+            r_0,
+            theta_plus_minus,
+            r_plus_minus,
+            u,
+            j,
+            s,
+            n,
+            eps,
+            alpha,
+            n_alpha,
+            
+        )
+
+        (
+            prng_key,
+            theta_m,
+            r_0,
+            theta_plus_minus,
+            r_plus_minus,
+            u,
+            j,
+            s,
+            n,
+            eps,
+            alpha,
+            n_alpha,
+        ) = lax.while_loop(
+            self._sample_scan_f_while_cond_fun,
+            self._sample_scan_f_while_body_fun,
+            val
+        )
+
+        
+
+   
+
+        # this works but is slow atm -> comment out
+        # eps, eps_bar, H_bar = lax.cond(
+        #     # m < self.M_adapt,
+        #     True,
+        #     self._dual_average,
+        #     lambda *args: (eps_bar, eps_bar, H_bar),
+        #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
+        # )
+        
+        carry = (
+            prng_key,
+            theta_m, 
+            eps,
+            eps_bar,
+            H_bar,
+            mu,
+        )
+
+        return carry, theta_m
+
+    def _sample_scan_f_while_cond_fun(self, val: Tuple):
+        (
+            prng_key,
+            theta_m,
+            r_0,
+            theta_plus_minus,
+            r_plus_minus,
+            u,
+            j,
+            s,
+            n,
+            eps,
+            alpha,
+            n_alpha,
+        ) = val
+        return s == 1
+
+    def _sample_scan_f_while_body_fun(self, val: Tuple):
+        (
+            prng_key,
+            theta_m,
+            r_0,
+            theta_plus_minus,
+            r_plus_minus,
+            u,
+            j,
+            s,
+            n,
+            eps,
+            alpha,
+            n_alpha,
+        ) = val
+        prng_key, subkey = jax.random.split(prng_key)
+        idx_star = jax.random.bernoulli(subkey).astype(jnp.int32)
+        v_j = 2 * idx_star - 1
+        theta_star = theta_plus_minus[idx_star]
+        r_star = r_plus_minus[idx_star]
+
+        self.prng_key, subkey = jax.random.split(prng_key)
+
+        (
+            theta_star,
+            r_star,
+            theta_prime,
+            n_prime,
+            s_prime,
+            alpha,
+            n_alpha,
+        ) = self._build_tree_while_loop(
+            theta_star, r_star, u, v_j, j, eps, theta_m, r_0, subkey
+        )
+
+        theta_plus_minus = theta_plus_minus.at[idx_star].set(theta_star)
+        r_plus_minus = r_plus_minus.at[idx_star].set(r_star)
+
+        self.prng_key, subkey = jax.random.split(self.prng_key)
+        theta_m = self._accept_or_reject_proposed_theta(
+            s_prime == 1, n_prime / n, theta_prime, theta_m, subkey
+        )
+
+        theta_delta = theta_plus_minus[1] - theta_plus_minus[0]
+        s *= (
+            s_prime
+            * (jnp.dot(theta_delta, r_plus_minus[0]) >= 0)
+            * (jnp.dot(theta_delta, r_plus_minus[1]) >= 0)
+        )
+        n += n_prime
+        j += 1
+
+        return (
+            prng_key,
+            theta_m,
+            r_0,
+            theta_plus_minus,
+            r_plus_minus,
+            u,
+            j,
+            s,
+            n,
+            eps,
+            alpha,
+            n_alpha,
+        )
+
     @jax.jit
     def _build_tree_single_step(self, theta_star, r_star, u, v, eps, theta_0, r_0):
         ln_u = jnp.log(u)
@@ -270,14 +450,16 @@ class NoUTurnSampler:
         n_alpha = 1
 
         return theta_double_star, r_double_star, n, s, alpha, n_alpha
-    
-    
-    
+
     @jax.jit
-    def _build_tree_while_loop(self, theta_star, r_star, u, v, j, eps, theta_0, r_0, prng_key):
+    def _build_tree_while_loop(
+        self, theta_star, r_star, u, v, j, eps, theta_0, r_0, prng_key
+    ):
         left_leaf_nodes = jnp.array(
-            [(jnp.zeros(theta_star.shape), jnp.zeros(r_0.shape))] #* max(1, j)  # get around tracing issues when j = 0
-        )  # array for storing leftmost leaf nodes in any subtree currently under consideration        
+            [
+                (jnp.zeros(theta_star.shape), jnp.zeros(r_0.shape))
+            ]  # * max(1, j)  # get around tracing issues when j = 0
+        )  # array for storing leftmost leaf nodes in any subtree currently under consideration
         # HMC path vars
         theta_prime = theta_star
         s = 1
@@ -288,7 +470,7 @@ class NoUTurnSampler:
         n_alpha = 0
 
         i = 0  # counter
-        
+
         (
             theta_star,
             r_star,
@@ -326,16 +508,11 @@ class NoUTurnSampler:
                 left_leaf_nodes,
                 i,
                 prng_key,
-            )
+            ),
         )
-       
-        
+
         return (theta_star, r_star, theta_prime, n, s, alpha, n_alpha)
 
-        
-        
-
-    
     @jax.jit
     def _build_tree_while_loop_cond(self, val: Tuple):
         (
@@ -354,11 +531,11 @@ class NoUTurnSampler:
             _,
             _,
             i,
-            _,  
+            _,
         ) = val
-        
-        return (s==1)*(i < 2**j)
-    
+
+        return (s == 1) * (i < 2**j)
+
     @jax.jit
     def _build_tree_while_loop_body(self, val: Tuple):
         (
@@ -377,10 +554,9 @@ class NoUTurnSampler:
             n_alpha,
             left_leaf_nodes,
             i,
-            prng_key,  
+            prng_key,
         ) = val
-        
-        
+
         i += 1  # incr here to align with b-tree 1-indexing
         (
             theta_double_star,
@@ -389,41 +565,48 @@ class NoUTurnSampler:
             s_prime,
             alpha_prime,
             n_alpha_prime,
-        ) = self._build_tree_single_step(
-            theta_star, r_star, u, v, eps, theta_0, r_0
-        )
+        ) = self._build_tree_single_step(theta_star, r_star, u, v, eps, theta_0, r_0)
 
         # update HMC path vars
         s *= s_prime
         n += n_prime
-        
+
         # update dual averaging vars
         alpha += alpha_prime
         n_alpha += n_alpha_prime
 
-       
         prng_key, subkey = jax.random.split(prng_key)
-        theta_prime = self._accept_or_reject_proposed_theta(n_prime, 1/n, theta_double_star, theta_star, subkey)
-        
+        theta_prime = self._accept_or_reject_proposed_theta(
+            n_prime, 1 / n, theta_double_star, theta_star, subkey
+        )
+
         left_leaf_nodes = lax.cond(
-            (j>0)*(i%2==1),
+            (j > 0) * (i % 2 == 1),
             self._handle_left_leaf_node_case,
             lambda *args: left_leaf_nodes,
-            left_leaf_nodes, theta_double_star, r_double_star, i, j
+            left_leaf_nodes,
+            theta_double_star,
+            r_double_star,
+            i,
+            j,
         )
-        
+
         s = lax.cond(
-            (j>0)*(i%2==0),
+            (j > 0) * (i % 2 == 0),
             self._handle_right_leaf_node_case,
             lambda *args: s,
-            left_leaf_nodes, theta_double_star, r_double_star, s, v, i, j
+            left_leaf_nodes,
+            theta_double_star,
+            r_double_star,
+            s,
+            v,
+            i,
+            j,
         )
-        
-        theta_star=theta_double_star
-        r_star=r_double_star
-        
-        
-        
+
+        theta_star = theta_double_star
+        r_star = r_double_star
+
         return (
             theta_star,
             r_star,
@@ -442,11 +625,16 @@ class NoUTurnSampler:
             i,
             prng_key,
         )
-                                
-        
-        
+
     @jax.jit
-    def _handle_left_leaf_node_case(self, left_leaf_nodes: jnp.array, theta_star: jnp.array, r_star: jnp.array, i: int, j: int) -> jnp.array:
+    def _handle_left_leaf_node_case(
+        self,
+        left_leaf_nodes: jnp.array,
+        theta_star: jnp.array,
+        r_star: jnp.array,
+        i: int,
+        j: int,
+    ) -> jnp.array:
         """
         if `i` is odd then it is the left-most leaf node of at least one balanced subtree
         -> overwrite correspoding stale position value in `left_leaf_nodes`
@@ -460,24 +648,29 @@ class NoUTurnSampler:
         state used `l` times we will have already made `l` u-turn checks against the previous
         `l` times state)
         """
-        
+
         idx = lax.fori_loop(
             1,
             j + 1,
             lambda k, idx: idx + jnp.array(i % (2**k) == 1, jnp.int32),
             -1,
         )
-        idx *= (j>0)  # needed for tracer
-        
-        left_leaf_nodes = (
-            left_leaf_nodes
-            .at[idx]
-            .set((theta_star, r_star))
-        )
+        idx *= j > 0  # needed for tracer
+
+        left_leaf_nodes = left_leaf_nodes.at[idx].set((theta_star, r_star))
         return left_leaf_nodes
-    
+
     @jax.jit
-    def _handle_right_leaf_node_case(self, left_leaf_nodes: jnp.array, theta_star: jnp.array, r_star: jnp.array, s: int, v: int, i: int, j: int) -> int:
+    def _handle_right_leaf_node_case(
+        self,
+        left_leaf_nodes: jnp.array,
+        theta_star: jnp.array,
+        r_star: jnp.array,
+        s: int,
+        v: int,
+        i: int,
+        j: int,
+    ) -> int:
         """
         if `i` is even then it is the right-most leaf node of at least one balanced subtree
         -> check for u-turn
@@ -502,7 +695,5 @@ class NoUTurnSampler:
             ),
             s,
         )
-        
+
         return s
-    
-    
