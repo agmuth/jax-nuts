@@ -4,41 +4,45 @@ from typing import Union, Tuple, Dict
 import numpy as np
 from jax import lax
 from typing import NamedTuple, Tuple
-
+from jax.lax import while_loop, fori_loop, scan, cond
+from jax import config
+# config.update("jax_debug_nans", True)
+# config.update("jax_disable_jit", True)
+config.update("jax_enable_x64", True)
 
 from jax.tree_util import register_pytree_node_class, Partial
 
 
-def lax_scan(f, init, xs, length=None):
-    if xs is None:
-        xs = [None] * length
-    carry = init
-    ys = []
-    for x in xs:
-        carry, y = f(carry, x)
-        ys.append(y)
-    return carry, np.stack(ys)
+# def scan(f, init, xs, length=None):
+#     if xs is None:
+#         xs = [None] * length
+#     carry = init
+#     ys = []
+#     for x in xs:
+#         carry, y = f(carry, x)
+#         ys.append(y)
+#     return carry, np.stack(ys)
 
 
-def lax_while_loop(cond_fun, body_fun, init_val):
-    val = init_val
-    while cond_fun(val):
-        val = body_fun(val)
-    return val
+# def while_loop(cond_fun, body_fun, init_val):
+#     val = init_val
+#     while cond_fun(val):
+#         val = body_fun(val)
+#     return val
 
 
-def lax_fori_loop(lower, upper, body_fun, init_val):
-    val = init_val
-    for i in range(lower, upper):
-        val = body_fun(i, val)
-    return val
+# def fori_loop(lower, upper, body_fun, init_val):
+#     val = init_val
+#     for i in range(lower, upper):
+#         val = body_fun(i, val)
+#     return val
 
 
-def lax_cond(pred, true_fun, false_fun, *operands):
-    if pred:
-        return true_fun(*operands)
-    else:
-        return false_fun(*operands)
+# def cond(pred, true_fun, false_fun, *operands):
+#     if pred:
+#         return true_fun(*operands)
+#     else:
+#         return false_fun(*operands)
 
 
 class DoubleTreeState(NamedTuple):
@@ -134,7 +138,7 @@ def sample_posterior(
     init = (theta_0, loglik_funcs, dual_average_state, dual_average_params, subkey2)
 
     # for loop (line 3 nuts paper)
-    carry, theta_samples = lax_scan(
+    carry, theta_samples = scan(
         _sample_posterior_scan_f,
         init,
         jnp.arange(1, M + 1),
@@ -180,7 +184,7 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
         s=1,
         n=0,
     )
-    n, alpha, n_alpha = 0, 0, 0  # need better names
+    n, alpha, n_alpha = 1, 0, 0  # need better names
     init_val = (
         double_tree_state,
         loglik_funcs,
@@ -190,7 +194,7 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
         n_alpha,
         prng_key,
     )
-    val = lax_while_loop(
+    val = while_loop(
         _sample_posterior_scan_f_while_loop_cond_fun,
         _sample_posterior_scan_f_while_loop_body_fun,
         init_val,
@@ -207,7 +211,7 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
     ) = val
 
     # dual average here
-    dual_average_state = lax_cond(
+    dual_average_state = cond(
         m < dual_average_params.M_adapt,
         _dual_average,
         lambda *args: dual_average_state,
@@ -218,8 +222,8 @@ def _sample_posterior_scan_f(carry: Tuple, m: int):
         m,
     )
 
-    if m > dual_average_params.M_adapt:
-        print()
+    # if m > dual_average_params.M_adapt:
+    #     print()
 
     carry = (
         theta_m,  # passed in as theta_{m-1} # maybe change name to theta_0
@@ -310,7 +314,7 @@ def _double_tree(
         prng_key,
     )
 
-    val = lax_while_loop(
+    val = while_loop(
         _double_tree_while_loop_cond, _double_tree_while_loop_body, init_val
     )
 
@@ -401,7 +405,7 @@ def _double_tree_while_loop_body(val: Tuple):
         n=n,
     )
 
-    left_leaf_nodes, double_tree_state = lax_cond(
+    left_leaf_nodes, double_tree_state = cond(
         (double_tree_state.j > 0) * (double_tree_state.i % 2 == 1),
         _handle_left_leaf_node_case,
         lambda left_leaf_nodes, double_tree_state: (left_leaf_nodes, double_tree_state),
@@ -409,7 +413,7 @@ def _double_tree_while_loop_body(val: Tuple):
         double_tree_state,
     )
 
-    left_leaf_nodes, double_tree_state = lax_cond(
+    left_leaf_nodes, double_tree_state = cond(
         (double_tree_state.j > 0) * (double_tree_state.i % 2 == 0),
         _handle_right_leaf_node_case,
         lambda left_leaf_nodes, double_tree_state: (left_leaf_nodes, double_tree_state),
@@ -436,7 +440,7 @@ def _handle_left_leaf_node_case(left_leaf_nodes, double_tree_state) -> jnp.array
     """
 
     idx_star = (double_tree_state.v + 1) // 2
-    idx = lax_fori_loop(
+    idx = fori_loop(
         1,
         double_tree_state.j + 1,
         lambda k, idx: idx + jnp.array(double_tree_state.i % (2**k) == 1, jnp.int32),
@@ -464,11 +468,11 @@ def _handle_right_leaf_node_case(left_leaf_nodes, double_tree_state):
     """
 
     idx_star = (double_tree_state.v + 1) // 2
-    s = lax_fori_loop(
+    s = fori_loop(
         1,
         double_tree_state.j + 1,
         lambda k, s: s
-        * lax_cond(
+        * cond(
             double_tree_state.i % (2**k) != 0,
             lambda *args: True,
             _check_for_u_turn,
@@ -494,7 +498,7 @@ def _find_reasonable_epsilon(theta, theta_loglik, prng_key):  # no state needed
     ln_p = theta_loglik(theta) - 0.5 * jnp.dot(r, r)
     ln_p_prime = theta_loglik(theta_prime) - 0.5 * jnp.dot(r_prime, r_prime)
 
-    alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1  # lax_cond
+    alpha = 2 * int(ln_p_prime - ln_p > -ln2) - 1  # cond
     while alpha * (ln_p_prime - ln_p) > -alpha * ln2:
         eps *= 2.0**alpha
         theta_prime, r_prime = _leapfrog(theta, r, eps, theta_loglik)
@@ -535,12 +539,12 @@ def _dual_average(
     state: DualAverageState, params: DualAveragePrams, alpha, n_alpha, m
 ) -> DualAverageState:
     (eps, eps_bar, H_bar) = (state.eps, state.eps_bar, state.H_bar)
-    if np.isnan(eps):
-        raise ValueError
+    # if np.isnan(eps):
+    #     raise ValueError
 
     # split out updates to avoid having to save vectors
 
-    H_bar = (1 - 1 / (m + params.t_0)) * H_bar + (params.delta - alpha / n_alpha) / (
+    H_bar = (1 - 1 / (m + params.t_0)) * H_bar + (params.delta - alpha / jnp.maximum(1, n_alpha)) / (
         m + params.t_0
     )
 
@@ -551,8 +555,8 @@ def _dual_average(
     # exponentiate for next iter
     eps = jnp.exp(eps)
     eps_bar = jnp.exp(eps_bar)
-    if np.isnan(eps):
-        raise ValueError
+    # if np.isnan(eps):
+    #     raise ValueError
 
     return DualAverageState(eps, eps_bar, H_bar)
 
