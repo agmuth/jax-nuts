@@ -1,4 +1,3 @@
-import jax
 import jax.numpy as jnp
 
 # ref: https://www.johndcook.com/CompendiumOfConjugatePriors.pdf

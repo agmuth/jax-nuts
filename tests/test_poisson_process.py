@@ -1,12 +1,10 @@
 from dataclasses import asdict, dataclass
 
 import jax.numpy as jnp
-import numpy as np
 import pytest
 
-from jaxnuts.nuts import NoUTurnSampler
+from jaxnuts.nuts import sample_posterior
 from tests.conjugate_priors import PoissonProcess
-from jaxnuts.nuts_functional import sample_posterior
 
 
 @dataclass
@@ -38,9 +36,7 @@ def test_poisson_process(problem: ProblemInstance):
 
     z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean) / nuts_posterior_std
     assert nuts_posterior_std > 0
-    assert (
-        z_val_obvs < 0.4
-    )
+    assert z_val_obvs < 0.4
 
 
 if __name__ == "__main__":

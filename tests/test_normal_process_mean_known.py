@@ -1,12 +1,10 @@
 from dataclasses import asdict, dataclass
 
 import jax.numpy as jnp
-import numpy as np
 import pytest
 
-from jaxnuts.nuts import NoUTurnSampler
+from jaxnuts.nuts import sample_posterior
 from tests.conjugate_priors import NormalProcessMeanKnown
-from jaxnuts.nuts_functional import sample_posterior
 
 
 @dataclass
