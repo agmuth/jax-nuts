@@ -25,7 +25,7 @@ problems = [ProblemInstance(a=3.0, b=2.0, n=10, x_sum=4.0)]
 @pytest.mark.parametrize("problem", problems)
 def test_poisson_process(problem: ProblemInstance):
     cp = PoissonProcess(**problem.dict())
-    nuts = NoUTurnSampler(loglik=cp, dim_theta=1)
+    nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
     M, M_adapt = 2000, 1000
@@ -41,5 +41,5 @@ def test_poisson_process(problem: ProblemInstance):
     # assert z_val_obvs < 0.84  # z_val_obvs = Array(7084242., dtype=float32) when run by pytest???
 
 
-# if __name__ == "__main__":
-#     test_poisson_process(problems[0])
+if __name__ == "__main__":
+    test_poisson_process(problems[0])

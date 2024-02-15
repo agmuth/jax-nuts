@@ -34,7 +34,7 @@ problems = [
 @pytest.mark.parametrize("problem", problems)
 def test_normal_process_mean_known(problem: ProblemInstance):
     cp = NormalProcessMeanKnown(**problem.dict())
-    nuts = NoUTurnSampler(loglik=cp, dim_theta=1)
+    nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
     M, M_adapt = 2000, 1000

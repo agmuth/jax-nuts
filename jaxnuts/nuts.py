@@ -17,7 +17,7 @@ class NoUTurnSampler:
     def __init__(
         self,
         loglik,
-        dim_theta,
+        theta_0,
         M=2_000,
         M_adapt=1_000,
         delta=0.5 * (0.95 + 0.25),
@@ -36,7 +36,7 @@ class NoUTurnSampler:
             jax.jit(lambda theta, r: jnp.exp(self.theta_r_loglik(theta, r)))
         )
 
-        self.dim_theta = dim_theta # dont think this is worth saving. 
+        self.theta_0 = theta_0
         self.M = M
         self.M_adapt = M_adapt 
         
@@ -52,7 +52,7 @@ class NoUTurnSampler:
     def tree_flatten(self):
         children = (
             self.theta_loglik,
-            self.dim_theta,
+            self.theta_0,
             self.M,
             self.M_adapt,
             self.delta,
@@ -81,6 +81,7 @@ class NoUTurnSampler:
         ln2 = jnp.log(2)
         dim_theta = theta.shape[0]
         eps = 1.0
+        # TODO: cahnge to call get momentum func
         r = jax.random.multivariate_normal(
             key=prng_key,
             mean=jnp.zeros(dim_theta),
@@ -150,14 +151,15 @@ class NoUTurnSampler:
         M_adapt=None,
     ):
         self.prng_key, subkey = jax.random.split(self.prng_key)
-        eps = self._find_reasonable_epsilon(theta=theta_0, prng_key=subkey)
+        eps = self._find_reasonable_epsilon(theta=self.theta_0, prng_key=subkey)
         eps_bar = 1.0
         H_bar = 0.0
         mu = jnp.log(10 * eps)
 
-        dim_theta = theta_0.shape[0]
+        # dim_theta = theta_0.shape[0]
+        dim_theta = self.theta_0.shape[0]
         theta_samples = jnp.empty((M + 1, dim_theta))
-        theta_samples = theta_samples.at[0].set(theta_0)
+        theta_samples = theta_samples.at[0].set(self.theta_0)
         
         """
         TODO:
@@ -166,7 +168,7 @@ class NoUTurnSampler:
         """
         
         
-        for m in range(1, M + 1):  
+        for m in range(1, self.M + 1):  
             self.prng_key, subkey1, subkey2 = jax.random.split(self.prng_key, 3)
             
             theta_m = theta_samples[m - 1]
@@ -229,7 +231,7 @@ class NoUTurnSampler:
                 n += n_prime
                 j += 1
 
-            if m < M_adapt:  # adapt accpetance params
+            if m < self.M_adapt:  # adapt accpetance params
                 eps, eps_bar, H_bar = self._dual_average(
                     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
                 )
