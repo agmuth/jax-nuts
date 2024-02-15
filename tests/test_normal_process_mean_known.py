@@ -37,7 +37,7 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     cp = NormalProcessMeanKnown(**problem.dict())
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
-    M, M_adapt = 200, 100
+    M, M_adapt = 2000, 1000
     theta_samples = sample_posterior(loglik=cp, theta_0=theta_0, M=M, M_adapt=M_adapt)
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_log(theta_samples)

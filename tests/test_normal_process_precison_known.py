@@ -55,7 +55,7 @@ def test_normal_process_precison_known(problem: ProblemInstance):
     # nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
     theta_0 = jnp.array([cp.prior_mean])
     # M, M_adapt = 2000, 1000
-    M, M_adapt = 200, 100
+    M, M_adapt = 2000, 1000
     theta_samples = sample_posterior(loglik=cp, theta_0=theta_0, M=M, M_adapt=M_adapt)
     theta_samples = theta_samples[M_adapt:]
     nuts_posterior_mean = theta_samples.mean()
