@@ -146,9 +146,7 @@ class NoUTurnSampler:
 
     def __call__(
         self,
-        theta_0,
-        M,
-        M_adapt=None,
+        
     ):
         self.prng_key, subkey = jax.random.split(self.prng_key)
         eps = self._find_reasonable_epsilon(theta=self.theta_0, prng_key=subkey)
@@ -158,7 +156,7 @@ class NoUTurnSampler:
 
         # dim_theta = theta_0.shape[0]
         dim_theta = self.theta_0.shape[0]
-        theta_samples = jnp.empty((M + 1, dim_theta))
+        theta_samples = jnp.empty((self.M + 1, dim_theta))
         theta_samples = theta_samples.at[0].set(self.theta_0)
         
         """

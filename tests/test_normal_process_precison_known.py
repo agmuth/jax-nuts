@@ -38,7 +38,7 @@ def test_normal_process_precison_known(problem: ProblemInstance):
     theta_0 = jnp.array([cp.prior_mean])
     # M, M_adapt = 2000, 1000
     M, M_adapt = 200, 100
-    theta_samples = nuts(theta_0, M, M_adapt)
+    theta_samples = nuts()
     theta_samples = theta_samples[M_adapt:]
     nuts_posterior_mean = theta_samples.mean()
     nuts_posterior_std = theta_samples.std()

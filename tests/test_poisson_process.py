@@ -29,7 +29,7 @@ def test_poisson_process(problem: ProblemInstance):
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
     M, M_adapt = 2000, 1000
-    theta_samples = nuts(theta_0, M, M_adapt)
+    theta_samples = nuts()
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_log(theta_samples)
     nuts_posterior_mean = theta_samples.mean()
@@ -38,7 +38,7 @@ def test_poisson_process(problem: ProblemInstance):
     z_val_obvs = abs(cp.posterior_mean - nuts_posterior_mean) / nuts_posterior_std
     assert nuts_posterior_std > 0
     # assert np.isclose(cp.posterior_mean, nuts_posterior_mean, rtol=0)
-    # assert z_val_obvs < 0.84  # z_val_obvs = Array(7084242., dtype=float32) when run by pytest???
+    assert z_val_obvs < 0.84  # z_val_obvs = Array(7084242., dtype=float32) when run by pytest???
 
 
 if __name__ == "__main__":

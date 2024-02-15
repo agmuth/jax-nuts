@@ -29,7 +29,7 @@ def test_bernoulli_process(problem: ProblemInstance):
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.logit(theta_0)
     M, M_adapt = 2000, 1000
-    theta_samples = nuts(theta_0, M, M_adapt)
+    theta_samples = nuts()
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_logit(theta_samples)
     nuts_posterior_mean = theta_samples.mean()
