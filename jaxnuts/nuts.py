@@ -151,7 +151,6 @@ class NoUTurnSampler:
             eps_bar,
             H_bar,
             mu,
-        
         )
         carry, theta_samples = lax.scan(
             self._sample_scan_f,
@@ -170,7 +169,6 @@ class NoUTurnSampler:
             eps_bar,
             H_bar,
             mu,
-  
         ) = carry
 
         # this needs to be `f`
@@ -206,7 +204,6 @@ class NoUTurnSampler:
             eps,
             alpha,
             n_alpha,
-            
         )
 
         (
@@ -223,26 +220,19 @@ class NoUTurnSampler:
             alpha,
             n_alpha,
         ) = lax.while_loop(
-            self._sample_scan_f_while_cond_fun,
-            self._sample_scan_f_while_body_fun,
-            val
+            self._sample_scan_f_while_cond_fun, self._sample_scan_f_while_body_fun, val
         )
 
-        
-
-   
-
-        
         # eps, eps_bar, H_bar = lax.cond(
         #     m < self.M_adapt,
         #     self._dual_average,
         #     lambda *args: (eps_bar, eps_bar, H_bar),
         #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
         # )
-        
+
         carry = (
             prng_key,
-            theta_m, 
+            theta_m,
             eps,
             eps_bar,
             H_bar,

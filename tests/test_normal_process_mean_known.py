@@ -6,6 +6,7 @@ import pytest
 
 from jaxnuts.nuts import NoUTurnSampler
 from tests.conjugate_priors import NormalProcessMeanKnown
+from jaxnuts.nuts_functional import sample_posterior
 
 
 @dataclass
@@ -34,11 +35,10 @@ problems = [
 @pytest.mark.parametrize("problem", problems)
 def test_normal_process_mean_known(problem: ProblemInstance):
     cp = NormalProcessMeanKnown(**problem.dict())
-    nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
     M, M_adapt = 200, 100
-    theta_samples = nuts()
+    theta_samples = sample_posterior(loglik=cp, theta_0=theta_0, M=M, M_adapt=M_adapt)
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_log(theta_samples)
     nuts_posterior_mean = theta_samples.mean()

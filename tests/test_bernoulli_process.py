@@ -6,7 +6,7 @@ import pytest
 
 from jaxnuts.nuts import NoUTurnSampler
 from tests.conjugate_priors import BernoulliProcess
-
+from jaxnuts.nuts_functional import sample_posterior
 
 @dataclass
 class ProblemInstance:
@@ -25,11 +25,11 @@ problems = [ProblemInstance(a=3.0, b=3.0, n=5, x_sum=4.0)]
 @pytest.mark.parametrize("problem", problems)
 def test_bernoulli_process(problem: ProblemInstance):
     cp = BernoulliProcess(**problem.dict())
-    nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
+    # nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.logit(theta_0)
     M, M_adapt = 200, 100
-    theta_samples = nuts()
+    theta_samples = sample_posterior(loglik=cp, theta_0=theta_0, M=M, M_adapt=M_adapt)
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_logit(theta_samples)
     nuts_posterior_mean = theta_samples.mean()
