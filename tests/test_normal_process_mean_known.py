@@ -37,7 +37,7 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     nuts = NoUTurnSampler(loglik=cp, theta_0=jnp.zeros(1))
     theta_0 = jnp.array([cp.prior_mean])
     theta_0 = cp.log(theta_0)
-    M, M_adapt = 2000, 1000
+    M, M_adapt = 200, 100
     theta_samples = nuts()
     theta_samples = theta_samples[M_adapt:]
     theta_samples = cp.inv_log(theta_samples)
@@ -49,5 +49,5 @@ def test_normal_process_mean_known(problem: ProblemInstance):
     assert z_val_obvs < 0.84
 
 
-# if __name__ == "__main__":
-#     test_normal_process_mean_known(problems[0])
+if __name__ == "__main__":
+    test_normal_process_mean_known(problems[0])

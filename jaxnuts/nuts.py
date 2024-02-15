@@ -17,8 +17,8 @@ class NoUTurnSampler:
         self,
         loglik,
         theta_0,
-        M=20,
-        M_adapt=10,
+        M=200,
+        M_adapt=100,
         delta=0.5 * (0.95 + 0.25),
         gamma=0.05,
         kappa=0.75,
@@ -246,7 +246,7 @@ class NoUTurnSampler:
             mu,
         
         )
-        _, theta_samples = lax.scan(
+        carry, theta_samples = lax.scan(
             self._sample_scan_f,
             init,
             jnp.arange(1, self.M + 1),
@@ -325,10 +325,9 @@ class NoUTurnSampler:
 
    
 
-        # this works but is slow atm -> comment out
+        
         # eps, eps_bar, H_bar = lax.cond(
-        #     # m < self.M_adapt,
-        #     True,
+        #     m < self.M_adapt,
         #     self._dual_average,
         #     lambda *args: (eps_bar, eps_bar, H_bar),
         #     eps, eps_bar, H_bar, mu, alpha, n_alpha, m
